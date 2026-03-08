@@ -1,0 +1,19 @@
+# Core dependencies
+fastapi>=0.100.0
+uvicorn>=0.23.0
+httpx>=0.24.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Optional: Vector memory (ChromaDB)
+# chromadb>=0.4.0
+
+# Optional: Voice messages
+# faster-whisper>=0.7.0
+# edge-tts>=6.0.0
+
+# Optional: Database features (jobs pipeline)
+# aiosqlite>=0.19.0
+
+# Optional: Knowledge graph (agent memory)
+# kuzu>=0.1.0

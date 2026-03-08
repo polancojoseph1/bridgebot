@@ -1,0 +1,258 @@
+"""Agent Registry — persistent storage for named specialist agents.
+
+Agents are stored in MEMORY_DIR/agents.db (SQLite).
+Each agent has an ID, name, type, system prompt, skill list, model, and collaborators.
+
+Usage:
+    from agent_registry import create_agent, get_agent, list_agents, update_agent, delete_agent
+"""
+
+import json
+import logging
+import sqlite3
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+logger = logging.getLogger("bridge.agent_registry")
+
+from config import MEMORY_DIR
+AGENTS_DB = str(Path(MEMORY_DIR) / "agents.db")
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS agents (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    agent_type  TEXT NOT NULL DEFAULT 'custom',
+    system_prompt TEXT NOT NULL DEFAULT '',
+    skills      TEXT NOT NULL DEFAULT '[]',
+    model       TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
+    collaborators TEXT NOT NULL DEFAULT '[]',
+    created_at  REAL NOT NULL,
+    updated_at  REAL NOT NULL,
+    proactive   INTEGER NOT NULL DEFAULT 0,
+    proactive_schedule TEXT NOT NULL DEFAULT '',
+    proactive_task TEXT NOT NULL DEFAULT ''
+);
+"""
+
+# Migrations for existing DBs that predate the proactive columns
+_MIGRATIONS = [
+    "ALTER TABLE agents ADD COLUMN proactive INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE agents ADD COLUMN proactive_schedule TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE agents ADD COLUMN proactive_task TEXT NOT NULL DEFAULT ''",
+]
+
+
+@dataclass
+class AgentDefinition:
+    id: str
+    name: str
+    agent_type: str = "custom"
+    system_prompt: str = ""
+    skills: list[str] = field(default_factory=list)
+    model: str = "claude-sonnet-4-6"
+    collaborators: list[str] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
+    proactive: bool = False
+    proactive_schedule: str = ""   # HH:MM (NYC time) — when to fire daily
+    proactive_task: str = ""       # the task prompt to run automatically
+
+
+def _get_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(AGENTS_DB)
+    conn.row_factory = sqlite3.Row
+    conn.execute(_SCHEMA)
+    conn.commit()
+    # Run migrations for existing DBs (fail silently if columns already exist)
+    for migration in _MIGRATIONS:
+        try:
+            conn.execute(migration)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+    return conn
+
+
+def _row_to_agent(row: sqlite3.Row) -> AgentDefinition:
+    return AgentDefinition(
+        id=row["id"],
+        name=row["name"],
+        agent_type=row["agent_type"],
+        system_prompt=row["system_prompt"],
+        skills=json.loads(row["skills"]),
+        model=row["model"],
+        collaborators=json.loads(row["collaborators"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        proactive=bool(row["proactive"]),
+        proactive_schedule=row["proactive_schedule"] or "",
+        proactive_task=row["proactive_task"] or "",
+    )
+
+
+def create_agent(
+    agent_id: str,
+    name: str,
+    agent_type: str = "custom",
+    system_prompt: str = "",
+    skills: list[str] | None = None,
+    model: str = "claude-sonnet-4-6",
+    collaborators: list[str] | None = None,
+) -> AgentDefinition:
+    """Create and persist a new agent. Raises ValueError if ID already exists."""
+    now = time.time()
+    agent = AgentDefinition(
+        id=agent_id,
+        name=name,
+        agent_type=agent_type,
+        system_prompt=system_prompt,
+        skills=skills or [],
+        model=model,
+        collaborators=collaborators or [],
+        created_at=now,
+        updated_at=now,
+    )
+    with _get_conn() as conn:
+        try:
+            conn.execute(
+                """INSERT INTO agents (id, name, agent_type, system_prompt, skills, model, collaborators, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent.id, agent.name, agent.agent_type, agent.system_prompt,
+                    json.dumps(agent.skills), agent.model,
+                    json.dumps(agent.collaborators), agent.created_at, agent.updated_at,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            raise ValueError(f"Agent '{agent_id}' already exists")
+    logger.info("Created agent: %s (%s)", agent.name, agent.id)
+    return agent
+
+
+def get_agent(agent_id: str) -> AgentDefinition | None:
+    """Get agent by ID. Returns None if not found."""
+    with _get_conn() as conn:
+        row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
+    return _row_to_agent(row) if row else None
+
+
+def get_agent_by_name(name: str) -> AgentDefinition | None:
+    """Case-insensitive partial name match. Returns first match or None."""
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT * FROM agents ORDER BY created_at").fetchall()
+    name_lower = name.lower()
+    for row in rows:
+        if name_lower in row["name"].lower() or name_lower == row["id"].lower():
+            return _row_to_agent(row)
+    return None
+
+
+def resolve_agent(id_or_name: str) -> AgentDefinition | None:
+    """Try exact ID first, then partial name match."""
+    return get_agent(id_or_name) or get_agent_by_name(id_or_name)
+
+
+def list_agents() -> list[AgentDefinition]:
+    """Return all agents sorted by creation time."""
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT * FROM agents ORDER BY created_at").fetchall()
+    return [_row_to_agent(row) for row in rows]
+
+
+def update_agent(agent_id: str, **fields) -> AgentDefinition | None:
+    """Update agent fields. Supported: name, agent_type, system_prompt, skills, model, collaborators.
+    Returns updated agent or None if not found."""
+    agent = get_agent(agent_id)
+    if not agent:
+        return None
+
+    allowed = {"name", "agent_type", "system_prompt", "skills", "model", "collaborators",
+               "proactive", "proactive_schedule", "proactive_task"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return agent
+
+    updates["updated_at"] = time.time()
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = []
+    for k, v in updates.items():
+        if k in ("skills", "collaborators") and isinstance(v, list):
+            values.append(json.dumps(v))
+        else:
+            values.append(v)
+    values.append(agent_id)
+
+    with _get_conn() as conn:
+        conn.execute(f"UPDATE agents SET {set_clause} WHERE id = ?", values)
+
+    logger.info("Updated agent %s: %s", agent_id, list(updates.keys()))
+    return get_agent(agent_id)
+
+
+def delete_agent(agent_id: str) -> bool:
+    """Delete an agent. Returns True if deleted, False if not found."""
+    with _get_conn() as conn:
+        cursor = conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+    deleted = cursor.rowcount > 0
+    if deleted:
+        logger.info("Deleted agent: %s", agent_id)
+    return deleted
+
+
+def seed_default_agents() -> int:
+    """Seed the 3 built-in agents if they don't already exist. Returns count seeded."""
+    from agent_skills import DEFAULT_AGENT_PROMPTS
+
+    defaults = [
+        {
+            "agent_id": "research",
+            "name": "Research Expert",
+            "agent_type": "research",
+            "skills": ["research"],
+            "collaborators": ["analytics"],
+        },
+        {
+            "agent_id": "analytics",
+            "name": "Analytics Expert",
+            "agent_type": "analytics",
+            "skills": ["analytics"],
+            "collaborators": ["research"],
+        },
+        {
+            "agent_id": "linkedin",
+            "name": "LinkedIn Expert",
+            "agent_type": "writing",
+            "skills": ["writing"],
+            "collaborators": ["research"],
+        },
+        {
+            "agent_id": "manager",
+            "name": "Manager Agent",
+            "agent_type": "manager",
+            "skills": ["manager"],
+            "collaborators": ["research", "analytics", "linkedin"],
+        },
+    ]
+
+    seeded = 0
+    for d in defaults:
+        if get_agent(d["agent_id"]) is None:
+            try:
+                create_agent(
+                    agent_id=d["agent_id"],
+                    name=d["name"],
+                    agent_type=d["agent_type"],
+                    system_prompt=DEFAULT_AGENT_PROMPTS.get(d["agent_id"], ""),
+                    skills=d["skills"],
+                    collaborators=d["collaborators"],
+                )
+                seeded += 1
+            except ValueError:
+                pass  # Already exists (race condition)
+
+    if seeded:
+        logger.info("Seeded %d default agents", seeded)
+    return seeded
