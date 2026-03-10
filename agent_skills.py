@@ -51,20 +51,6 @@ SKILL_PACKS: dict[str, dict] = {
             "- Include a note on why the hook works and expected engagement"
         ),
     },
-    "job_search": {
-        "description": "LinkedIn scraping, hiring manager research, email personalization, pipeline tracking",
-        "system_prompt_section": (
-            "JOB SEARCH SKILLS:\n"
-            "- Scrape LinkedIn Jobs using site: search operators\n"
-            "- Research hiring managers via LinkedIn, company pages, and press releases\n"
-            "- Personalize every email — reference specific company news or tech stack\n"
-            "- Track status in jobs.db (POST to http://localhost:8585/jobs)\n"
-            "- Never fabricate emails — only report ones found published online\n"
-            "- Priority chain: hiring manager > technical recruiter > Head of Eng > HR\n"
-            "- Draft emails that are direct, short (under 150 words), and specific\n"
-            "- Follow up timing: 5 days after first send if no response"
-        ),
-    },
     "coding": {
         "description": "Code review, debugging, refactoring, architecture design, test writing",
         "system_prompt_section": (
@@ -217,8 +203,6 @@ SPECIALIST AGENTS AVAILABLE:
 - Analytics Expert: pattern detection, trend analysis, data interpretation
 - LinkedIn Expert: content creation, post writing in the user's voice
 - Coding Expert: code review, debugging, architecture, test writing
-- Job Search Expert: LinkedIn scraping, hiring manager research, email drafting
-
 SYNTHESIS RULES:
 - Remove redundancy from sub-agent outputs
 - Preserve best insights from each agent
@@ -283,31 +267,6 @@ OUTPUT FORMAT:
 - For emails: subject line + body as separate deliverables
 """,
 
-    "job_search": """\
-You are Job Search Expert — a specialized AI agent focused on the full job application pipeline \
-for the user. Reads candidate profile from USER.md in MEMORY_DIR.
-
-CANDIDATE PROFILE:
-(Loaded from USER.md at runtime. Configure your target titles, skills, experience, and locations there.)
-
-PIPELINE STAGES:
-1. Scrape — find relevant job postings via LinkedIn site: searches
-2. Research — find hiring managers and recruiters (LinkedIn, company pages, press)
-3. Draft — write personalized cold emails (under 150 words, specific to the company)
-4. Track — update jobs.db via POST http://localhost:8585/jobs
-
-JOB SEARCH RULES:
-- Never fabricate contact emails — only report ones found published online
-- Priority for contacts: hiring manager > technical recruiter > Head of Eng > HR generic
-- Skip roles requiring 10+ years, clearly principal/staff level, or non-engineering
-- Personalize every email with a specific detail about the company (news, tech stack, product)
-- Follow-up timing: 5 business days after first send if no reply
-
-OUTPUT FORMAT:
-- For research: structured list of contacts with name, title, email (if found), LinkedIn URL, confidence
-- For email drafts: full ready-to-send text — no placeholders
-- For pipeline runs: JSON summary of jobs found, contacts researched, emails drafted
-""",
 }
 
 

@@ -64,17 +64,8 @@ MEMORY_DIR: str = os.environ.get("MEMORY_DIR", os.path.expanduser("~/memories"))
 MEMORY_COLLECTION: str = os.environ.get("MEMORY_COLLECTION", "telegram_bridge")
 MEMORY_TOP_K: int = int(os.environ.get("MEMORY_TOP_K", "5"))
 
-# Resume path for job search features (optional)
-RESUME_PATH: str = os.environ.get("RESUME_PATH", "")
-
 # Your first name — used to personalize the bot's greetings and memory context
 USER_NAME: str = os.environ.get("USER_NAME", "")
-
-# Job search / email pipeline personalization
-USER_FULL_NAME: str = os.environ.get("USER_FULL_NAME", "Your Name")
-USER_BACKGROUND: str = os.environ.get("USER_BACKGROUND", "Software engineer with experience building production systems.")
-USER_TRUE_FACTS: str = os.environ.get("USER_TRUE_FACTS", "")
-EMAIL_SIGNATURE: str = os.environ.get("EMAIL_SIGNATURE", "")
 
 # Chrome extension (Claude only)
 CHROME_ENABLED: bool = os.environ.get("CHROME_ENABLED", "false").lower() in ("true", "1", "yes")
