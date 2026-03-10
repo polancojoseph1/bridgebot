@@ -859,7 +859,7 @@ def run_bot(existing: dict):
     if not webhook:
         if shutil.which("cloudflared"):
             print()
-            print("    No webhook URL set — starting cloudflared tunnel automatically...")
+            print("    Starting cloudflared tunnel automatically...")
             webhook = _start_cloudflared_tunnel(port, existing)
             if not webhook:
                 print("    Could not start tunnel. Run 'brew install cloudflared' and try again.")
