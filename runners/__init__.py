@@ -19,8 +19,11 @@ def create_runner() -> RunnerBase:
     elif CLI_RUNNER == "codex":
         from runners.codex import CodexRunner
         return CodexRunner()
+    elif CLI_RUNNER == "qwen":
+        from runners.qwen import QwenRunner
+        return QwenRunner()
     elif CLI_RUNNER == "generic":
         from runners.generic import GenericRunner
         return GenericRunner()
     else:
-        raise ValueError(f"Unknown CLI_RUNNER: '{CLI_RUNNER}'. Use: claude, gemini, codex, or generic")
+        raise ValueError(f"Unknown CLI_RUNNER: '{CLI_RUNNER}'. Use: claude, gemini, codex, qwen, or generic")

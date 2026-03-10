@@ -10,6 +10,7 @@ Pick your AI CLI (Claude Code, Gemini CLI, Codex CLI, or any custom tool), set y
 |-----|-------------|---------------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` | `claude -p --output-format stream-json` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `gemini` | `gemini -p --yolo --output-format stream-json` |
+| [Qwen Code](https://github.com/QwenLM/qwen-code) | `qwen` | `qwen --yolo --output-format stream-json` |
 | [Codex CLI](https://github.com/openai/codex) | `codex` | `codex exec --json` |
 | Any CLI | `generic` | `<your-binary> <prompt>` |
 
@@ -182,6 +183,7 @@ tg-cli-bridge/
 │   ├── base.py            # Abstract runner interface
 │   ├── claude.py          # Claude Code adapter
 │   ├── gemini.py          # Gemini CLI adapter
+│   ├── qwen.py            # Qwen Code adapter
 │   ├── codex.py           # Codex CLI adapter
 │   └── generic.py         # Any-CLI fallback
 ├── voice_handler.py       # Whisper + Edge TTS
