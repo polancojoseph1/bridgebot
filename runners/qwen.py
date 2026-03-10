@@ -1,4 +1,4 @@
-"""Qwen Code CLI runner adapter.
+"""Qwen Coder CLI runner adapter.
 
 Subprocess: qwen -p --yolo --output-format stream-json --resume <uuid>
 Session: UUID from --session-id on first call, --resume on subsequent
@@ -103,7 +103,7 @@ class QwenRunner(RunnerBase):
         try:
             binary = self.discover_binary()
         except FileNotFoundError:
-            return "\u274c Error: qwen CLI not found. Is Qwen Code installed? (npm install -g @qwen-code/qwen-code)"
+            return "\u274c Error: qwen CLI not found. Is Qwen Coder installed? (npm install -g @qwen-code/qwen-code)"
 
         env = dict(os.environ)
         session_id = instance.session_id

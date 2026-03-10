@@ -82,7 +82,7 @@ CLI_OPTIONS = {
     },
     "qwen": {
         "command": "qwen",
-        "label": "Qwen Code",
+        "label": "Qwen Coder",
         "company": "Alibaba / QwenLM",
         "description": "Qwen3-Coder agent — 1000 free requests/day",
         "install": "npm install -g @qwen-code/qwen-code",
@@ -597,10 +597,10 @@ def step_cli_runner(existing: dict):
             if not prompt_yes_no("  Save this choice anyway? (you can install it later)", default=True):
                 return step_cli_runner(existing)  # let them pick again
 
-        # Qwen Code requires a one-time browser login
+        # Qwen Coder requires a one-time browser login
         if chosen == "qwen" and path:
             print()
-            print("    Qwen Code requires a one-time authentication.")
+            print("    Qwen Coder requires a one-time authentication.")
             print("    If you haven't done this yet, run:  qwen")
             print("    It will open your browser to log in with your qwen.ai account.")
             print("    After that, the bot will work without further login.")
