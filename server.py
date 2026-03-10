@@ -68,6 +68,13 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 
+# Suppress 404 access log noise (e.g. stale browser tabs hitting unknown routes)
+class _Suppress404(logging.Filter):
+    def filter(self, record):
+        return '" 404 ' not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(_Suppress404())
+
 
 
 
