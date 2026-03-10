@@ -80,6 +80,14 @@ CLI_OPTIONS = {
         "install": "npm install -g @openai/codex",
         "url": "https://github.com/openai/codex",
     },
+    "qwen": {
+        "command": "qwen",
+        "label": "Qwen Code",
+        "company": "Alibaba / QwenLM",
+        "description": "Qwen3-Coder agent — 1000 free requests/day",
+        "install": "npm install -g @qwen-code/qwen-code",
+        "url": "https://github.com/QwenLM/qwen-code",
+    },
 }
 
 
@@ -135,7 +143,7 @@ def is_required_complete(existing: dict) -> bool:
     return (
         not _is_placeholder(token)
         and not _is_placeholder(uid)
-        and bool(runner) and runner in ("claude", "gemini", "codex", "generic")
+        and bool(runner) and runner in ("claude", "gemini", "codex", "qwen", "generic")
     )
 
 
@@ -588,6 +596,16 @@ def step_cli_runner(existing: dict):
             print()
             if not prompt_yes_no("  Save this choice anyway? (you can install it later)", default=True):
                 return step_cli_runner(existing)  # let them pick again
+
+        # Qwen Code requires a one-time browser login
+        if chosen == "qwen" and path:
+            print()
+            print("    Qwen Code requires a one-time authentication.")
+            print("    If you haven't done this yet, run:  qwen")
+            print("    It will open your browser to log in with your qwen.ai account.")
+            print("    After that, the bot will work without further login.")
+            print("    Free tier: 1000 requests/day via qwen.ai OAuth.")
+            print()
 
     save_value("CLI_RUNNER", chosen)
     existing["CLI_RUNNER"] = chosen
