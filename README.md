@@ -18,57 +18,75 @@ Pick your AI CLI (Claude Code, Gemini CLI, Codex CLI, or any custom tool), set y
 
 ### 1. Install your AI CLI
 
-Make sure at least one AI CLI is installed and authenticated:
+Pick one and install it:
 
 ```bash
-# Claude Code (Anthropic)
+# Claude Code (Anthropic) — requires Anthropic account
 npm install -g @anthropic-ai/claude-code
+claude  # authenticate
 
-# Gemini CLI (Google)
+# Gemini CLI (Google) — requires Google account
 npm install -g @google/gemini-cli
+gemini  # authenticate
 
-# Codex CLI (OpenAI)
+# Qwen Code (Alibaba) — 1000 free requests/day, no credit card
+npm install -g @qwen-code/qwen-code
+qwen  # authenticate via browser (qwen.ai account)
+
+# Codex CLI (OpenAI) — requires OpenAI API key
 npm install -g @openai/codex
 ```
 
-### 2. Clone and run the setup wizard
+### 2. Clone and set up
 
 ```bash
 git clone https://github.com/polancojoseph1/tg-cli-bridge.git
 cd tg-cli-bridge
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+```
 
+### 3. Run the setup wizard
+
+```bash
 python setup_wizard.py
 ```
 
 The wizard walks you through everything:
-- **Telegram bot token** — get one from [@BotFather](https://t.me/BotFather) (the wizard validates it)
+- **Telegram bot token** — create a bot with [@BotFather](https://t.me/BotFather), then paste the token
 - **Your Telegram user ID** — get it from [@userinfobot](https://t.me/userinfobot)
-- **Which AI CLI to use** — the wizard auto-detects what's installed
+- **Which AI CLI to use** — auto-detects what's installed, lets you pick
+- **Webhook URL** — paste your tunnel URL (ngrok/cloudflared) or set it later
 
-Optional features (voice, image generation, memory, etc.) are configurable from the same menu. Re-run `python setup_wizard.py` anytime to change settings.
+Re-run `python setup_wizard.py` anytime to change settings.
 
-### 3. Start the bot
+### 4. Expose to the internet
+
+The bot needs a public HTTPS URL for Telegram webhooks. In a second terminal:
+
+```bash
+# cloudflared (no account needed)
+cloudflared tunnel --url http://localhost:8585
+
+# or ngrok
+ngrok http 8585
+```
+
+Copy the `https://` URL and paste it when the wizard asks for your webhook URL, or register it manually:
+
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/setWebhook?url=<YOUR_URL>/webhook"
+```
+
+### 5. Start the bot
+
+Press `r` in the setup wizard, or run directly:
 
 ```bash
 python -m uvicorn server:app --host 0.0.0.0 --port 8585
 ```
 
-Or just press `r` in the setup wizard to launch directly.
-
-### 4. Expose to the internet
-
-The bot needs a public URL for Telegram webhooks. Use any tunneling tool:
-
-```bash
-# ngrok
-ngrok http 8585
-
-# cloudflared
-cloudflared tunnel --url http://localhost:8585
-```
-
-Set the `WEBHOOK_URL` in your `.env` to the public URL, or the bot will auto-register on startup if `WEBHOOK_URL` is set.
+Message your bot on Telegram — it should respond.
 
 ## Features
 
