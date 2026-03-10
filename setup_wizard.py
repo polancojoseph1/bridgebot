@@ -15,6 +15,16 @@ import platform
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
+# Auto-activate venv — re-exec with venv Python if we're not already in it
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = Path(__file__).parent.resolve()
+_VENV_PYTHON = _PROJECT_ROOT / ".venv" / "bin" / "python"
+
+if _VENV_PYTHON.exists() and not sys.executable.startswith(str(_PROJECT_ROOT / ".venv")):
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON)] + sys.argv)
+
+# ---------------------------------------------------------------------------
 # Dependency check — give a helpful message if requirements aren't installed
 # ---------------------------------------------------------------------------
 
@@ -642,17 +652,32 @@ def config_server(existing: dict):
 
     print()
     print("  Telegram needs a public URL to reach your bot.")
-    print("  If your computer isn't publicly accessible, you'll need")
-    print("  a tunneling tool to create one. Popular options:")
+    print("  The recommended way is Tailscale Funnel (free, stable URL):")
     print()
-    print(f"    ngrok:        ngrok http {port}")
-    print(f"    cloudflared:  cloudflared tunnel --url http://localhost:{port}")
-    print()
-    print("  After starting the tunnel, paste the public URL below.")
-    print("  Leave blank if you don't have one yet — you can set it later.")
+    print("    1. Install: brew install tailscale && tailscale up")
+    print("    2. Enable Funnel in your Tailscale admin console")
+    print(f"    3. Run: tailscale serve --funnel --bg --https=443 http://localhost:{port}")
+    print("    4. Your URL is: https://<your-machine>.<tailnet>.ts.net")
     print()
 
-    webhook = prompt_value("Webhook URL (the public URL from your tunnel)",
+    # Try to auto-detect Tailscale URL
+    detected_url = _detect_tailscale_url()
+    if detected_url:
+        print(f"  Tailscale detected! Your URL appears to be:")
+        print(f"  {detected_url}")
+        print()
+        if prompt_yes_no("  Use this URL?", default=True):
+            webhook = f"{detected_url}/webhook"
+            save_value("WEBHOOK_URL", webhook)
+            existing["WEBHOOK_URL"] = webhook
+            print(f"    Saved: {webhook}")
+            print()
+            return
+    else:
+        print("  (Tailscale not detected — you can also use ngrok or paste any URL)")
+        print()
+
+    webhook = prompt_value("Webhook URL (public HTTPS URL + /webhook)",
                            existing=existing.get("WEBHOOK_URL", ""))
     if webhook:
         save_value("WEBHOOK_URL", webhook)
@@ -856,18 +881,14 @@ def run_bot(existing: dict):
                 return
 
     webhook = existing.get("WEBHOOK_URL", "")
-    # Quick tunnels (trycloudflare.com) are ephemeral — always start a fresh one
-    if "trycloudflare.com" in webhook:
-        webhook = ""
-    need_tunnel = not webhook
-
-    if need_tunnel and not shutil.which("cloudflared"):
-        print()
-        print("    No webhook URL is set and cloudflared is not installed.")
-        print("    Install it first:  brew install cloudflared")
-        print(f"    Or run in another terminal:  ngrok http {port}")
-        print("    Then set WEBHOOK_URL via menu option 4 and press r again.")
-        return
+    if not webhook:
+        # Try Tailscale auto-detect as a convenience
+        detected = _detect_tailscale_url()
+        if detected:
+            webhook = f"{detected}/webhook"
+            save_value("WEBHOOK_URL", webhook)
+            existing["WEBHOOK_URL"] = webhook
+            print(f"    Auto-detected Tailscale URL: {webhook}")
 
     # Kill any existing process on the port so uvicorn can bind
     _free_port(int(port))
@@ -876,26 +897,26 @@ def run_bot(existing: dict):
     if webhook:
         env["WEBHOOK_URL"] = webhook
 
+    mode = f"webhook -> {webhook}" if webhook else "polling (no webhook URL set)"
     print()
     print(f"    Starting tg-cli-bridge on {host}:{port}...")
-    if need_tunnel:
-        print("    (cloudflared tunnel will start once server is up)")
+    print(f"    Mode: {mode}")
     print("    Press Ctrl+C to stop.")
     print()
 
-    # Start uvicorn first so the server is live when Telegram verifies the webhook
+    # Use the venv Python if available, otherwise fall back to sys.executable
+    venv_python = PROJECT_DIR / ".venv" / "bin" / "python"
+    python = str(venv_python) if venv_python.exists() else sys.executable
+
+    # Start uvicorn
     server_proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "server:app",
+        [python, "-m", "uvicorn", "server:app",
          "--host", host, "--port", port],
         cwd=str(PROJECT_DIR),
         env=env,
     )
 
     try:
-        if need_tunnel:
-            import time as _t
-            _t.sleep(2)  # Give uvicorn a moment to bind
-            _start_cloudflared_tunnel(port, existing)
         server_proc.wait()
     except KeyboardInterrupt:
         print("\n\n    Bot stopped.\n")
@@ -904,6 +925,27 @@ def run_bot(existing: dict):
             server_proc.wait(timeout=3)
         except Exception:
             server_proc.kill()
+
+
+def _detect_tailscale_url() -> str | None:
+    """Try to get the current machine's Tailscale Funnel URL (no port = HTTPS 443)."""
+    if not shutil.which("tailscale"):
+        return None
+    try:
+        import json
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            return None
+        data = json.loads(result.stdout)
+        hostname = data.get("Self", {}).get("DNSName", "").rstrip(".")
+        if not hostname:
+            return None
+        return f"https://{hostname}"
+    except Exception:
+        return None
 
 
 def _free_port(port: int) -> None:
@@ -1032,13 +1074,13 @@ def print_summary(existing: dict):
         print("  1. Start the bot:")
         print(f"     python -m uvicorn server:app --host {host} --port {port}")
         print()
-        print("  2. Expose it to the internet (so Telegram can reach it):")
-        print(f"     ngrok http {port}")
-        print("     (copy the https URL ngrok gives you)")
+        print("  2. Expose it via Tailscale Funnel (if not already):")
+        print(f"     tailscale serve --funnel --bg --https=443 http://localhost:{port}")
+        print("     (then re-run this wizard — it will auto-detect the URL)")
         print()
         print("  3. Set the webhook URL (if you haven't already):")
         print("     Re-run this wizard and choose option 4,")
-        print("     or add WEBHOOK_URL=<your-url> to .env")
+        print("     or add WEBHOOK_URL=<your-url>/webhook to .env")
         print()
         print("  4. Open Telegram and message your bot!")
         print()

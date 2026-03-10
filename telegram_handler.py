@@ -233,6 +233,40 @@ async def download_document(file_id: str, dest_path: str) -> str:
     return dest_path
 
 
+async def delete_webhook() -> bool:
+    """Delete any registered webhook, switching Telegram to allow polling. Returns True on success."""
+    client = await get_client()
+    try:
+        resp = await client.post(f"{TELEGRAM_API}/deleteWebhook")
+        data = resp.json()
+        if data.get("ok"):
+            logger.info("Webhook deleted — polling mode active")
+            return True
+        logger.error("deleteWebhook failed: %s", data)
+    except httpx.HTTPError as exc:
+        logger.error("deleteWebhook error: %s", exc)
+    return False
+
+
+async def get_updates(offset: int = 0, timeout: int = 30) -> list[dict]:
+    """Long-poll Telegram for new updates. Returns a list of update dicts."""
+    client = await get_client()
+    try:
+        resp = await client.post(
+            f"{TELEGRAM_API}/getUpdates",
+            json={"offset": offset, "timeout": timeout, "limit": 100},
+            timeout=timeout + 5.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("ok"):
+                return data.get("result", [])
+        logger.warning("getUpdates returned %d: %s", resp.status_code, resp.text[:200])
+    except httpx.HTTPError as exc:
+        logger.warning("getUpdates HTTP error: %s", exc)
+    return []
+
+
 async def register_webhook(url: str) -> bool:
     """Register a webhook URL with Telegram. Returns True on success."""
     normalized_url = url.rstrip("/")

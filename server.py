@@ -22,7 +22,7 @@ from config import (
     is_cli_available, validate_config, logger,
 )
 from runners import create_runner
-from telegram_handler import send_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, close_client
+from telegram_handler import send_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client
 from image_handler import generate_image
 from voice_handler import download_voice, transcribe_audio, text_to_speech, cleanup_file
 import memory_handler
@@ -256,7 +256,9 @@ async def lifespan(application: FastAPI):
         await register_webhook(WEBHOOK_URL)
         logger.info("Webhook registered from WEBHOOK_URL env")
     else:
-        logger.warning("WEBHOOK_URL not set -- webhook won't be auto-registered")
+        await delete_webhook()
+        logger.info("No WEBHOOK_URL set — starting long-poll mode")
+        asyncio.create_task(_run_polling())
 
     # Start worker for the default instance (primary user)
     _ensure_worker(instances.active)
@@ -380,15 +382,13 @@ async def get_prompts(name: Optional[str] = None):
 
 
 
-@app.post("/webhook")
-async def webhook(request: Request):
-    body = await request.json()
-
-    # Deduplicate webhook retries from Telegram
+async def process_update(body: dict) -> None:
+    """Process a single Telegram update dict. Used by both webhook and polling modes."""
+    # Deduplicate retries / repeated polling
     update_id = body.get("update_id")
     if update_id:
         if update_id in _processed_updates:
-            return JSONResponse({"ok": True})
+            return
         _processed_updates.add(update_id)
         if len(_processed_updates) > 1000:
             oldest = sorted(_processed_updates)[:500]
@@ -396,7 +396,7 @@ async def webhook(request: Request):
 
     message = body.get("message")
     if not message:
-        return JSONResponse({"ok": True})
+        return
 
     chat_id = message["chat"]["id"]
     user_id = message.get("from", {}).get("id", 0)
@@ -412,7 +412,7 @@ async def webhook(request: Request):
     if user_id not in ALLOWED_USER_IDS:
         logger.warning("Unauthorized user %d", user_id)
         await send_message(chat_id, "Unauthorized.")
-        return JSONResponse({"ok": True})
+        return
 
     # Normalize command to lowercase (preserve args) so all commands are case-insensitive
     if text.startswith("/"):
@@ -423,11 +423,11 @@ async def webhook(request: Request):
     # /call and /endcall are handled before queue-based commands
     if text.startswith("/call") and not text.startswith("/chrome"):
         await _handle_command(chat_id, text)
-        return JSONResponse({"ok": True})
+        return
 
     if text == "/endcall":
         await _handle_command(chat_id, text)
-        return JSONResponse({"ok": True})
+        return
 
     # Gate text messages during an active voice call
     from call_handler import get_manager
@@ -438,17 +438,17 @@ async def webhook(request: Request):
             "\U0001f3a4 Voice call is active \u2014 speak in the group voice chat!\n"
             "Use /endcall to leave the call first.",
         )
-        return JSONResponse({"ok": True})
+        return
 
     # /research runs independently (fetches public data + Ollama analysis)
     if text.startswith("/research"):
         company = text[len("/research"):].strip()
         if not company:
             await send_message(chat_id, "Usage: /research <company name>\nExample: /research Apple Inc")
-            return JSONResponse({"ok": True})
+            return
         health.record_message()
         asyncio.create_task(_process_research(chat_id, company))
-        return JSONResponse({"ok": True})
+        return
 
     # /objective — find companies pursuing a specific goal + what they're each doing
     if text.startswith("/objective"):
@@ -458,24 +458,24 @@ async def webhook(request: Request):
                 chat_id,
                 "Usage: /objective <goal or theme>\nExample: /objective improve voice-based AI",
             )
-            return JSONResponse({"ok": True})
+            return
         health.record_message()
         asyncio.create_task(_process_objective(chat_id, objective))
-        return JSONResponse({"ok": True})
+        return
 
     # /imagine is special -- it runs independently (uses Gemini, not Claude)
     if text.startswith("/imagine"):
         prompt = text[len("/imagine"):].strip()
         if not prompt:
             await send_message(chat_id, "Usage: /imagine <description of the image>")
-            return JSONResponse({"ok": True})
+            return
         health.record_message()
         asyncio.create_task(_process_image_generation(chat_id, prompt))
-        return JSONResponse({"ok": True})
+        return
 
     if text.startswith("/"):
         await _handle_command(chat_id, text, user_id=user_id)
-        return JSONResponse({"ok": True})
+        return
 
     # Photo message -- download and send to Claude with vision
     if photo:
@@ -493,7 +493,7 @@ async def webhook(request: Request):
             instance_id=target_instance.id,
             user_id=user_id,
         )))
-        return JSONResponse({"ok": True})
+        return
 
     # Document upload -- save to uploads folder inside memory dir
     if document:
@@ -503,7 +503,7 @@ async def webhook(request: Request):
         dest_path = os.path.join(save_dir, file_name)
         health.record_message()
         asyncio.create_task(_handle_document_upload(chat_id, file_id, dest_path, file_name))
-        return JSONResponse({"ok": True})
+        return
 
     # Voice / audio message -- transcribe then process
     if voice or audio:
@@ -519,11 +519,11 @@ async def webhook(request: Request):
             instance_id=voice_instance.id,
             user_id=user_id,
         )))
-        return JSONResponse({"ok": True})
+        return
 
     # Skip empty messages
     if not text.strip() and not photo and not voice and not audio and not document:
-        return JSONResponse({"ok": True})
+        return
 
     # One-shot direct message: @<id or name> <message>
     # Routes to a specific instance WITHOUT changing the active instance.
@@ -573,7 +573,7 @@ async def webhook(request: Request):
                 await send_message(chat_id, f"Error sending to @{target_ref}: {e}")
 
         asyncio.create_task(_oneshot_enqueue())
-        return JSONResponse({"ok": True})
+        return
 
     # Regular text message -- route to instance and process
     health.record_message()
@@ -594,6 +594,30 @@ async def webhook(request: Request):
             await send_message(chat_id, f"Error queuing message: {e}")
 
     asyncio.create_task(_route_and_enqueue())
+
+
+async def _run_polling() -> None:
+    """Long-poll Telegram for updates when running without a webhook."""
+    offset = 0
+    logger.info("Polling loop started")
+    while True:
+        try:
+            updates = await get_updates(offset=offset, timeout=30)
+            for update in updates:
+                offset = update["update_id"] + 1
+                asyncio.create_task(process_update(update))
+        except asyncio.CancelledError:
+            logger.info("Polling loop cancelled")
+            break
+        except Exception as exc:
+            logger.error("Polling error: %s", exc)
+            await asyncio.sleep(5)
+
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    body = await request.json()
+    await process_update(body)
     return JSONResponse({"ok": True})
 
 

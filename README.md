@@ -56,23 +56,39 @@ The wizard walks you through everything:
 - **Telegram bot token** — create a bot with [@BotFather](https://t.me/BotFather), then paste the token
 - **Your Telegram user ID** — get it from [@userinfobot](https://t.me/userinfobot)
 - **Which AI CLI to use** — auto-detects what's installed, lets you pick
-- **Webhook URL** — paste your tunnel URL (ngrok/cloudflared) or set it later
+- **Webhook URL** — auto-detected from Tailscale if installed, or paste any URL
 
 Re-run `python setup_wizard.py` anytime to change settings.
 
-### 4. Expose to the internet
+### 4. Expose to the internet (Tailscale Funnel — recommended)
 
-The bot needs a public HTTPS URL for Telegram webhooks. In a second terminal:
+The bot needs a public HTTPS URL for Telegram webhooks. Tailscale Funnel gives you a **stable, permanent URL** with no rate limits — free forever.
+
+**One-time setup:**
 
 ```bash
-# cloudflared (no account needed)
-cloudflared tunnel --url http://localhost:8585
+# 1. Install Tailscale
+brew install tailscale
 
-# or ngrok
-ngrok http 8585
+# 2. Start the daemon and authenticate
+sudo tailscaled &
+tailscale up   # opens browser for login
+
+# 3. Enable Funnel (one-time — click the link it prints if needed)
+tailscale funnel --bg --https=443 http://localhost:8585
+
+# 4. Get your stable webhook URL
+tailscale status --json | python3 -c \
+  "import json,sys; d=json.load(sys.stdin); print('https://'+d['Self']['DNSName'].rstrip('.'))"
+# → https://your-machine.tail-xxxx.ts.net
+
+# 5. Set it in .env (or re-run setup_wizard.py — it auto-detects Tailscale)
+# WEBHOOK_URL=https://your-machine.tail-xxxx.ts.net/webhook
 ```
 
-Copy the `https://` URL and paste it when the wizard asks for your webhook URL, or register it manually:
+Your URL never changes, survives reboots, and Tailscale manages the tunnel automatically.
+
+**Alternative:** paste any HTTPS URL when the wizard asks (ngrok, cloudflared, etc.).
 
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/setWebhook?url=<YOUR_URL>/webhook"
