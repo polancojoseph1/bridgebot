@@ -877,6 +877,9 @@ def run_bot(existing: dict):
     print("    Press Ctrl+C to stop.")
     print()
 
+    # Kill any existing process on the port so uvicorn can bind
+    _free_port(int(port))
+
     try:
         subprocess.run(
             [sys.executable, "-m", "uvicorn", "server:app",
@@ -885,6 +888,22 @@ def run_bot(existing: dict):
         )
     except KeyboardInterrupt:
         print("\n\n    Bot stopped.\n")
+
+
+def _free_port(port: int) -> None:
+    """Kill any process listening on port so uvicorn can bind."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True, text=True
+        )
+        for pid in result.stdout.strip().splitlines():
+            try:
+                subprocess.run(["kill", "-9", pid.strip()], capture_output=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
@@ -928,21 +947,19 @@ def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
     # Register webhook with Telegram
     webhook_url = f"{url}/webhook"
     try:
-        import urllib.request
-        import json as _json
-        req = urllib.request.Request(
+        import httpx
+        resp = httpx.post(
             f"https://api.telegram.org/bot{token}/setWebhook",
-            data=_json.dumps({"url": webhook_url}).encode(),
-            headers={"Content-Type": "application/json"},
+            json={"url": webhook_url},
+            timeout=10,
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = _json.loads(resp.read())
-            if result.get("ok"):
-                print("    Webhook registered!")
-                save_value("WEBHOOK_URL", webhook_url)
-                existing["WEBHOOK_URL"] = webhook_url
-            else:
-                print(f"    Webhook registration failed: {result.get('description')}")
+        result = resp.json()
+        if result.get("ok"):
+            print("    Webhook registered!")
+            save_value("WEBHOOK_URL", webhook_url)
+            existing["WEBHOOK_URL"] = webhook_url
+        else:
+            print(f"    Webhook registration failed: {result.get('description')}")
     except Exception as e:
         print(f"    Could not register webhook: {e}")
 

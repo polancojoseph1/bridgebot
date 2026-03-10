@@ -98,6 +98,7 @@ _CLI_DEFAULTS: dict[str, dict] = {
     "claude": {"command": "claude", "bot_name": "Claude"},
     "gemini": {"command": "gemini", "bot_name": "Gemini"},
     "codex":  {"command": "codex",  "bot_name": "Codex"},
+    "qwen":   {"command": "qwen",   "bot_name": "Qwen"},
 }
 
 def _auto_detect():
@@ -119,8 +120,8 @@ def validate_config() -> list[str]:
         errors.append("TELEGRAM_BOT_TOKEN is not set")
     if not ALLOWED_USER_IDS:
         errors.append("ALLOWED_USER_ID is not set")
-    if CLI_RUNNER not in ("claude", "gemini", "codex", "generic"):
-        errors.append(f"CLI_RUNNER='{CLI_RUNNER}' — must be claude, gemini, codex, or generic")
+    if CLI_RUNNER not in ("claude", "gemini", "codex", "qwen", "generic"):
+        errors.append(f"CLI_RUNNER='{CLI_RUNNER}' — must be claude, gemini, codex, qwen, or generic")
     return errors
 
 
