@@ -57,17 +57,14 @@ def send_telegram(text: str) -> None:
         logger.warning("BOT_TOKEN or CHAT_ID not set — cannot send Telegram notification")
         return
     try:
-        import urllib.request
-        import json as _json
-        payload = _json.dumps({'chat_id': CHAT_ID, 'text': text}).encode()
-        req = urllib.request.Request(
+        import httpx
+        resp = httpx.post(
             f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
-            data=payload,
-            headers={'Content-Type': 'application/json'},
+            json={'chat_id': CHAT_ID, 'text': text},
+            timeout=10,
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status == 200:
-                logger.info(f'Telegram notification sent: {text[:80]}')
+        if resp.status_code == 200:
+            logger.info(f'Telegram notification sent: {text[:80]}')
     except Exception as e:
         logger.error(f'Failed to send Telegram notification: {e}')
 

@@ -880,11 +880,17 @@ def run_bot(existing: dict):
     # Kill any existing process on the port so uvicorn can bind
     _free_port(int(port))
 
+    env = dict(os.environ)
+    webhook = existing.get("WEBHOOK_URL", "")
+    if webhook:
+        env["WEBHOOK_URL"] = webhook
+
     try:
         subprocess.run(
             [sys.executable, "-m", "uvicorn", "server:app",
              "--host", host, "--port", port],
             cwd=str(PROJECT_DIR),
+            env=env,
         )
     except KeyboardInterrupt:
         print("\n\n    Bot stopped.\n")
