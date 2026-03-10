@@ -75,7 +75,7 @@ sudo tailscaled &
 tailscale up   # opens browser for login
 
 # 3. Enable Funnel (one-time — click the link it prints if needed)
-tailscale funnel --bg --https=443 http://localhost:8585
+tailscale funnel --bg --https=443 http://localhost:8588
 
 # 4. Get your stable webhook URL
 tailscale status --json | python3 -c \
@@ -99,7 +99,7 @@ curl -s "https://api.telegram.org/bot<TOKEN>/setWebhook?url=<YOUR_URL>/webhook"
 Press `r` in the setup wizard, or run directly:
 
 ```bash
-python -m uvicorn server:app --host 0.0.0.0 --port 8585
+python -m uvicorn server:app --host 0.0.0.0 --port 8588
 ```
 
 Message your bot on Telegram — it should respond.

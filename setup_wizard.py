@@ -346,7 +346,7 @@ def show_dashboard(existing: dict):
 
     # 4. Server
     host = existing.get("HOST", "0.0.0.0")
-    port = existing.get("PORT", "8585")
+    port = existing.get("PORT", "8588")
     webhook = existing.get("WEBHOOK_URL", "")
     server_display = f"{host}:{port}"
     if webhook:
@@ -656,8 +656,8 @@ def config_server(existing: dict):
     existing["HOST"] = host
 
     port = prompt_value("Port (what port to listen on)",
-                        default="8585",
-                        existing=existing.get("PORT", "8585"))
+                        default="8588",
+                        existing=existing.get("PORT", "8588"))
     save_value("PORT", port)
     existing["PORT"] = port
 
@@ -876,7 +876,7 @@ def config_prompt(existing: dict):
 
 def run_bot(existing: dict):
     host = existing.get("HOST", "0.0.0.0")
-    port = existing.get("PORT", "8585")
+    port = existing.get("PORT", "8588")
 
     # Pre-flight checks
     runner = existing.get("CLI_RUNNER", "claude")
@@ -1074,7 +1074,7 @@ def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
 
 def print_summary(existing: dict):
     host = existing.get("HOST", "0.0.0.0")
-    port = existing.get("PORT", "8585")
+    port = existing.get("PORT", "8588")
     ready = is_required_complete(existing)
 
     print()

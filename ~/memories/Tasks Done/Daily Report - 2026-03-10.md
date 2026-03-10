@@ -6,3 +6,6 @@
 [13:16] [Claude]: Which files or on my desktop directory?
 [17:17] [Claude]: Which folders are in my desktop directory
 [17:18] [Claude]: What are the files and folders on my desktop directory?
+[17:23] [Claude]: Can you go to jefe and projects folder? And then commit and push this for me. Tg-cli-bridge
+[17:32] [Claude]: Did you push to main?
+[17:38] [Claude]: I have a question for my telegram bridge CLI, right now I think it’s currently separate code for qwe...

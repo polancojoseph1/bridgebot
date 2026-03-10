@@ -55,7 +55,7 @@ CLI_SYSTEM_PROMPT: str = os.environ.get("CLI_SYSTEM_PROMPT", "")
 BOT_NAME: str = os.environ.get("BOT_NAME", "")
 
 HOST: str = os.environ.get("HOST", "0.0.0.0")
-PORT: int = int(os.environ.get("PORT", "8585"))
+PORT: int = int(os.environ.get("PORT", "8588"))
 WEBHOOK_URL: str = os.environ.get("WEBHOOK_URL", "")
 
 # === Optional Features ===
