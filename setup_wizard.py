@@ -19,10 +19,21 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 _PROJECT_ROOT = Path(__file__).parent.resolve()
-_VENV_PYTHON = _PROJECT_ROOT / ".venv" / "bin" / "python"
+# venv Python path differs by OS: bin/python on Unix, Scripts/python.exe on Windows
+_VENV_PYTHON = (
+    _PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    if sys.platform == "win32"
+    else _PROJECT_ROOT / ".venv" / "bin" / "python"
+)
 
 if _VENV_PYTHON.exists() and not sys.executable.startswith(str(_PROJECT_ROOT / ".venv")):
-    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON)] + sys.argv)
+    if sys.platform == "win32":
+        # os.execv is unreliable on Windows — spawn a new process instead
+        import subprocess as _sp
+        result = _sp.run([str(_VENV_PYTHON)] + sys.argv)
+        sys.exit(result.returncode)
+    else:
+        os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON)] + sys.argv)
 
 # ---------------------------------------------------------------------------
 # Dependency check — give a helpful message if requirements aren't installed
@@ -905,7 +916,11 @@ def run_bot(existing: dict):
     print()
 
     # Use the venv Python if available, otherwise fall back to sys.executable
-    venv_python = PROJECT_DIR / ".venv" / "bin" / "python"
+    venv_python = (
+        PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
+        if sys.platform == "win32"
+        else PROJECT_DIR / ".venv" / "bin" / "python"
+    )
     python = str(venv_python) if venv_python.exists() else sys.executable
 
     # Start uvicorn
@@ -951,15 +966,27 @@ def _detect_tailscale_url() -> str | None:
 def _free_port(port: int) -> None:
     """Kill any process listening on port so uvicorn can bind."""
     try:
-        result = subprocess.run(
-            ["lsof", "-ti", f":{port}"],
-            capture_output=True, text=True
-        )
-        for pid in result.stdout.strip().splitlines():
-            try:
-                subprocess.run(["kill", "-9", pid.strip()], capture_output=True)
-            except Exception:
-                pass
+        if sys.platform == "win32":
+            # netstat + taskkill on Windows
+            result = subprocess.run(
+                ["netstat", "-ano", "-p", "TCP"],
+                capture_output=True, text=True
+            )
+            for line in result.stdout.splitlines():
+                if f":{port} " in line and "LISTENING" in line:
+                    parts = line.split()
+                    pid = parts[-1]
+                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+        else:
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}"],
+                capture_output=True, text=True
+            )
+            for pid in result.stdout.strip().splitlines():
+                try:
+                    subprocess.run(["kill", "-9", pid.strip()], capture_output=True)
+                except Exception:
+                    pass
     except Exception:
         pass
 
