@@ -858,18 +858,27 @@ def run_bot(existing: dict):
     webhook = existing.get("WEBHOOK_URL", "")
     if not webhook:
         print()
-        print("    Note: No webhook URL is set.")
-        print("    Telegram won't be able to reach your bot until you either:")
-        print(f"      a) Start a tunnel:  ngrok http {port}")
-        print("      b) Set WEBHOOK_URL in the menu (option 4)")
+        print("    No webhook URL is set — Telegram needs a public URL to reach your bot.")
         print()
-        print("    The bot will start, but it won't receive messages yet.")
-        if not prompt_yes_no("  Start anyway?", default=True):
-            return
+        if shutil.which("cloudflared"):
+            if prompt_yes_no("  Start a cloudflared tunnel automatically?", default=True):
+                webhook = _start_cloudflared_tunnel(port, existing)
+                if not webhook:
+                    print("    Could not start tunnel.")
+                    if not prompt_yes_no("  Start bot without a tunnel?", default=False):
+                        return
+        else:
+            print("    Install cloudflared to set up a tunnel automatically:")
+            print("      brew install cloudflared")
+            print(f"    Or run in another terminal:  ngrok http {port}")
+            print("    Then set WEBHOOK_URL via menu option 4 and press r again.")
+            print()
+            if not prompt_yes_no("  Start bot without a tunnel?", default=False):
+                return
 
     print()
     print(f"    Starting tg-cli-bridge on {host}:{port}...")
-    print("    Press Ctrl+C to stop the bot.")
+    print("    Press Ctrl+C to stop.")
     print()
 
     try:
@@ -880,6 +889,70 @@ def run_bot(existing: dict):
         )
     except KeyboardInterrupt:
         print("\n\n    Bot stopped.\n")
+
+
+def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
+    """Start a cloudflared quick tunnel, capture the URL, register the Telegram webhook."""
+    import re
+    import time
+    import threading
+
+    token = existing.get("TELEGRAM_BOT_TOKEN", "")
+    print()
+    print("    Starting cloudflared tunnel...")
+
+    try:
+        proc = subprocess.Popen(
+            ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except FileNotFoundError:
+        print("    cloudflared not found.")
+        return None
+
+    url = None
+    deadline = time.time() + 25
+    for line in proc.stdout:
+        if time.time() > deadline:
+            break
+        m = re.search(r'https://[a-zA-Z0-9\-]+\.trycloudflare\.com', line)
+        if m:
+            url = m.group(0)
+            break
+
+    if not url:
+        proc.terminate()
+        print("    Timed out waiting for tunnel URL.")
+        return None
+
+    print(f"    Tunnel: {url}")
+
+    # Register webhook with Telegram
+    webhook_url = f"{url}/webhook"
+    try:
+        import urllib.request
+        import json as _json
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/setWebhook",
+            data=_json.dumps({"url": webhook_url}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = _json.loads(resp.read())
+            if result.get("ok"):
+                print("    Webhook registered!")
+                save_value("WEBHOOK_URL", webhook_url)
+                existing["WEBHOOK_URL"] = webhook_url
+            else:
+                print(f"    Webhook registration failed: {result.get('description')}")
+    except Exception as e:
+        print(f"    Could not register webhook: {e}")
+
+    # Keep cloudflared alive in background (exits when wizard process exits)
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return url
 
 
 # ---------------------------------------------------------------------------
