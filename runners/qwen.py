@@ -164,6 +164,7 @@ class QwenRunner(RunnerBase):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                cwd=os.path.expanduser("~"),
                 limit=10 * 1024 * 1024,
             )
             instance.process = proc

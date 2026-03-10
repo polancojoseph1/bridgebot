@@ -55,6 +55,7 @@ class GenericRunner(RunnerBase):
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=os.path.expanduser("~"),
             )
         except OSError as exc:
             return f'{{"error": "Failed to start {self.cli_command}: {exc}"}}'
@@ -109,6 +110,7 @@ class GenericRunner(RunnerBase):
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=os.path.expanduser("~"),
             )
             instance.process = proc
         except OSError as exc:
