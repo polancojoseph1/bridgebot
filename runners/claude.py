@@ -170,6 +170,7 @@ class ClaudeRunner(RunnerBase):
             cmd.append(message)
 
         log_path = self.make_log_path(self.name, chat_id, instance.id)
+        log_start_offset = os.path.getsize(log_path) if os.path.exists(log_path) else 0
 
         # Spawn the wrapper as a detached process so it survives server crashes.
         # The wrapper reads CLI stdout+stderr line by line and writes to log_path with flush.
@@ -204,7 +205,7 @@ class ClaudeRunner(RunnerBase):
 
         async def process_stream():
             nonlocal final_result, _agent_counter
-            async for line, _offset in self.tail_log_file(log_path, start_offset=0, proc=proc):
+            async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
                 try:

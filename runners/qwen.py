@@ -167,6 +167,7 @@ class QwenRunner(RunnerBase):
         cmd.append(prompt)
 
         log_path = self.make_log_path(self.name, chat_id, instance.id)
+        log_start_offset = os.path.getsize(log_path) if os.path.exists(log_path) else 0
 
         # Spawn the wrapper as a detached process so it survives server crashes.
         wrapper_cmd = [sys.executable, _SUBPROCESS_LOGGER, log_path] + cmd
@@ -203,7 +204,7 @@ class QwenRunner(RunnerBase):
 
         async def process_stream():
             nonlocal final_result
-            async for line, _offset in self.tail_log_file(log_path, start_offset=0, proc=proc):
+            async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
                 try:
