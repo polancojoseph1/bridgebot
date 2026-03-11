@@ -10,10 +10,12 @@ import json
 import logging
 import os
 import shutil
+import subprocess
+import sys
 from datetime import date
 from typing import Callable, Awaitable
 
-from runners.base import RunnerBase
+from runners.base import RunnerBase, _SUBPROCESS_LOGGER
 
 logger = logging.getLogger("bridge.codex")
 
@@ -215,6 +217,8 @@ class CodexRunner(RunnerBase):
         on_progress: Callable[[str], Awaitable[None]] | None = None,
         image_path: str | None = None,
         memory_context: str = "",
+        on_subprocess_started: Callable[[int, str, str], None] | None = None,
+        chat_id: int = 0,
     ) -> str:
         instance.was_stopped = False
 
@@ -259,33 +263,39 @@ class CodexRunner(RunnerBase):
         else:
             cmd = [binary, "exec", full_prompt] + init_flags
 
+        log_path = self.make_log_path(self.name, chat_id, instance.id)
+
+        # Spawn the wrapper as a detached process so it survives server crashes.
+        wrapper_cmd = [sys.executable, _SUBPROCESS_LOGGER, log_path] + cmd
+
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                *wrapper_cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
                 env=env,
                 cwd=os.path.expanduser("~"),
-                limit=10 * 1024 * 1024,
+                start_new_session=True,   # detach: survives server death
             )
             instance.process = proc
         except OSError as exc:
             logger.exception("OS error running codex")
             return f"\u274c Error starting codex: {exc}"
 
+        # Record subprocess info on the instance for crash recovery
+        instance.subprocess_pid = proc.pid
+        instance.subprocess_log_file = log_path
+        instance.subprocess_start_time = self.get_pid_start_time(proc.pid) or ""
+        if on_subprocess_started:
+            on_subprocess_started(proc.pid, log_path, instance.subprocess_start_time)
+
         assistant_text_parts: list[str] = []
-        stderr_output = b""
         captured_thread_id: str | None = None
         _usage = {"input": 0, "output": 0}
 
-        async def drain_stderr():
-            nonlocal stderr_output
-            stderr_output = await proc.stderr.read()
-
-        async def process_stdout():
+        async def process_stream():
             nonlocal captured_thread_id
-            async for raw_line in proc.stdout:
-                line = raw_line.decode(errors="replace").strip()
+            async for line, _offset in self.tail_log_file(log_path, start_offset=0, proc=proc):
                 if not line:
                     continue
                 try:
@@ -324,11 +334,7 @@ class CodexRunner(RunnerBase):
                     _usage["input"] = usage.get("input_tokens", 0)
                     _usage["output"] = usage.get("output_tokens", 0)
 
-        async def process_stream():
-            stderr_task = asyncio.create_task(drain_stderr())
-            await process_stdout()
             await proc.wait()
-            await stderr_task
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
@@ -339,12 +345,18 @@ class CodexRunner(RunnerBase):
             except ProcessLookupError:
                 pass
             instance.process = None
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
             return "\u23f0 Codex took too long to respond (timed out)."
 
         instance.process = None
 
         if instance.was_stopped:
             instance.was_stopped = False
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
             return "\U0001f6d1 Stopped."
 
         if proc.returncode == 0:
@@ -356,11 +368,17 @@ class CodexRunner(RunnerBase):
                 instance.last_input_tokens = _usage["input"]
                 instance.last_output_tokens = _usage["output"]
                 instance.last_total_tokens = _usage["input"] + _usage["output"]
+            # Clear subprocess tracking — process finished cleanly
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
 
         if proc.returncode != 0:
-            err = stderr_output.decode(errors="replace").strip()
-            logger.error("codex exited %d: %s", proc.returncode, err)
-            return f"\u274c Codex error:\n{err}" if err else "\u274c Codex exited with an error."
+            logger.error("codex exited %d (see log: %s)", proc.returncode, log_path)
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
+            return "\u274c Codex exited with an error."
 
         if assistant_text_parts:
             return "".join(assistant_text_parts)

@@ -9,10 +9,12 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
+import sys
 import uuid
 from typing import Callable, Awaitable
 
-from runners.base import RunnerBase
+from runners.base import RunnerBase, _SUBPROCESS_LOGGER
 
 logger = logging.getLogger("bridge.claude")
 
@@ -107,6 +109,8 @@ class ClaudeRunner(RunnerBase):
         on_progress: Callable[[str], Awaitable[None]] | None = None,
         image_path: str | None = None,
         memory_context: str = "",
+        on_subprocess_started: Callable[[int, str, str], None] | None = None,
+        chat_id: int = 0,
     ) -> str:
         instance.was_stopped = False
 
@@ -165,35 +169,42 @@ class ClaudeRunner(RunnerBase):
         else:
             cmd.append(message)
 
+        log_path = self.make_log_path(self.name, chat_id, instance.id)
+
+        # Spawn the wrapper as a detached process so it survives server crashes.
+        # The wrapper reads CLI stdout+stderr line by line and writes to log_path with flush.
+        wrapper_cmd = [sys.executable, _SUBPROCESS_LOGGER, log_path] + cmd
+
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                *wrapper_cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
                 env=env,
                 cwd=os.path.expanduser("~"),
-                limit=10 * 1024 * 1024,
+                start_new_session=True,   # detach: survives server death
             )
             instance.process = proc
         except OSError as exc:
             logger.exception("OS error running claude")
             return f"\u274c Error starting claude: {exc}"
 
+        # Record subprocess info on the instance for crash recovery
+        instance.subprocess_pid = proc.pid
+        instance.subprocess_log_file = log_path
+        instance.subprocess_start_time = self.get_pid_start_time(proc.pid) or ""
+        if on_subprocess_started:
+            on_subprocess_started(proc.pid, log_path, instance.subprocess_start_time)
+
         final_result = ""
         assistant_text_parts: list[str] = []
-        stderr_output = b""
         _usage = {"turn": {}, "context_window": 0, "cost": 0.0}
         _agent_calls: dict[str, dict] = {}
         _agent_counter = 0
 
-        async def drain_stderr():
-            nonlocal stderr_output
-            stderr_output = await proc.stderr.read()
-
-        async def process_stdout():
+        async def process_stream():
             nonlocal final_result, _agent_counter
-            async for raw_line in proc.stdout:
-                line = raw_line.decode(errors="replace").strip()
+            async for line, _offset in self.tail_log_file(log_path, start_offset=0, proc=proc):
                 if not line:
                     continue
                 try:
@@ -248,11 +259,7 @@ class ClaudeRunner(RunnerBase):
                         _usage["context_window"] = model_data.get("contextWindow", 0)
                         break
 
-        async def process_stream():
-            stderr_task = asyncio.create_task(drain_stderr())
-            await process_stdout()
             await proc.wait()
-            await stderr_task
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
@@ -263,12 +270,18 @@ class ClaudeRunner(RunnerBase):
             except ProcessLookupError:
                 pass
             instance.process = None
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
             return "\u23f0 Claude took too long to respond (timed out)."
 
         instance.process = None
 
         if instance.was_stopped:
             instance.was_stopped = False
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
             return "\U0001f6d1 Stopped."
 
         if proc.returncode == 0:
@@ -282,14 +295,26 @@ class ClaudeRunner(RunnerBase):
                 instance.last_cache_creation_tokens = turn.get("cache_creation_input_tokens", 0)
                 instance.last_output_tokens = turn.get("output_tokens", 0)
             instance.session_cost += _usage["cost"]
+            # Clear subprocess tracking — process finished cleanly
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
 
         if proc.returncode != 0:
-            err = stderr_output.decode(errors="replace").strip()
-            logger.error("claude exited %d: %s", proc.returncode, err)
-            if "session" in err.lower():
+            logger.error("claude exited %d (see log: %s)", proc.returncode, log_path)
+            # Check log for session-related error indicators
+            try:
+                with open(log_path, "r", errors="replace") as _f:
+                    _log_tail = _f.read()[-2000:]
+            except OSError:
+                _log_tail = ""
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
+            if "session" in _log_tail.lower():
                 self.new_session(instance)
                 return "\u274c Session error. New conversation started \u2014 please resend your message."
-            return f"\u274c Claude error:\n{err}" if err else "\u274c Claude exited with an error."
+            return "\u274c Claude exited with an error." if not _log_tail else f"\u274c Claude error (check logs)"
 
         if final_result:
             return final_result

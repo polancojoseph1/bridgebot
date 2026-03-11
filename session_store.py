@@ -65,6 +65,17 @@ class SessionStore:
                 CREATE INDEX IF NOT EXISTS idx_messages_lookup
                 ON messages(chat_id, bot_name, instance_number, created_at);
             """)
+            # Subprocess survival tracking (added in v2)
+            for col_sql in [
+                "ALTER TABLE sessions ADD COLUMN subprocess_pid INTEGER",
+                "ALTER TABLE sessions ADD COLUMN subprocess_log_file TEXT",
+                "ALTER TABLE sessions ADD COLUMN subprocess_log_offset INTEGER DEFAULT 0",
+                "ALTER TABLE sessions ADD COLUMN subprocess_start_time TEXT",
+            ]:
+                try:
+                    conn.execute(col_sql)
+                except sqlite3.OperationalError:
+                    pass  # column already exists
 
     # -------------------------------------------------------------------------
     # Session management
@@ -259,6 +270,62 @@ class SessionStore:
             )
 
         return "\n\n".join(parts)
+
+    # -------------------------------------------------------------------------
+    # Subprocess survival tracking
+    # -------------------------------------------------------------------------
+
+    def set_subprocess(
+        self, chat_id: int, bot_name: str, instance_number: int,
+        pid: int, log_file: str, start_time: str,
+    ) -> None:
+        """Record the detached subprocess PID and log file path."""
+        now = int(time.time())
+        with self._conn() as conn:
+            conn.execute(
+                """UPDATE sessions SET subprocess_pid=?, subprocess_log_file=?,
+                   subprocess_start_time=?, subprocess_log_offset=0, updated_at=?
+                   WHERE chat_id=? AND bot_name=? AND instance_number=?""",
+                (pid, log_file, start_time, now, str(chat_id), bot_name, instance_number),
+            )
+
+    def update_log_offset(
+        self, chat_id: int, bot_name: str, instance_number: int, offset: int
+    ) -> None:
+        """Update the byte offset of how much of the log file has been processed."""
+        with self._conn() as conn:
+            conn.execute(
+                """UPDATE sessions SET subprocess_log_offset=?
+                   WHERE chat_id=? AND bot_name=? AND instance_number=?""",
+                (offset, str(chat_id), bot_name, instance_number),
+            )
+
+    def get_subprocess_info(
+        self, chat_id: int, bot_name: str, instance_number: int
+    ) -> dict | None:
+        """Return subprocess tracking info, or None if not set."""
+        with self._conn() as conn:
+            row = conn.execute(
+                """SELECT subprocess_pid, subprocess_log_file, subprocess_log_offset,
+                          subprocess_start_time
+                   FROM sessions WHERE chat_id=? AND bot_name=? AND instance_number=?""",
+                (str(chat_id), bot_name, instance_number),
+            ).fetchone()
+        if not row or not row["subprocess_pid"]:
+            return None
+        return dict(row)
+
+    def clear_subprocess(
+        self, chat_id: int, bot_name: str, instance_number: int
+    ) -> None:
+        """Clear subprocess tracking after clean completion."""
+        with self._conn() as conn:
+            conn.execute(
+                """UPDATE sessions SET subprocess_pid=NULL, subprocess_log_file=NULL,
+                   subprocess_log_offset=0, subprocess_start_time=NULL
+                   WHERE chat_id=? AND bot_name=? AND instance_number=?""",
+                (str(chat_id), bot_name, instance_number),
+            )
 
     # -------------------------------------------------------------------------
     # Maintenance

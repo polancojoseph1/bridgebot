@@ -9,10 +9,17 @@ and provides a uniform interface for:
 """
 
 from abc import ABC, abstractmethod
+import asyncio
+import os
 import platform
 import shutil
 import subprocess
-from typing import Callable, Awaitable, Any
+import sys
+from typing import AsyncGenerator, Callable, Awaitable, Any
+
+# Subprocess logger wrapper script path
+_SUBPROCESS_LOGGER = os.path.join(os.path.dirname(__file__), "subprocess_logger.py")
+_LOG_DIR = os.path.expanduser("~/.jefe/subprocess_logs")
 
 
 class RunnerBase(ABC):
@@ -121,6 +128,67 @@ class RunnerBase(ABC):
             return 1 if result.returncode == 0 else 0
         except Exception:
             return 0
+
+    @staticmethod
+    def make_log_path(bot_name: str, chat_id: int, instance_id: int) -> str:
+        """Return the log file path for a specific instance."""
+        os.makedirs(_LOG_DIR, exist_ok=True)
+        return os.path.join(_LOG_DIR, f"{bot_name}_{chat_id}_{instance_id}.log")
+
+    @staticmethod
+    def get_pid_start_time(pid: int) -> str:
+        """Return a string identifier for the process start time, for recycling detection."""
+        try:
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "lstart="],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return ""
+
+    @staticmethod
+    def is_pid_alive(pid: int, start_time: str) -> bool:
+        """Return True if pid is still running AND has the same start time (not recycled)."""
+        if not pid:
+            return False
+        current = RunnerBase.get_pid_start_time(pid)
+        if not current:
+            return False
+        return current == start_time
+
+    @staticmethod
+    async def tail_log_file(
+        log_path: str,
+        start_offset: int = 0,
+        proc=None,
+    ) -> AsyncGenerator[tuple, None]:
+        """Async generator: tail a log file, yielding (line, offset) as they appear.
+
+        Polls every 50ms. Stops when proc exits (if provided) and all lines are read.
+        """
+        try:
+            f = open(log_path, "r", errors="replace")
+        except OSError:
+            return
+
+        try:
+            f.seek(start_offset)
+            while True:
+                line = f.readline()
+                if line:
+                    yield line.rstrip("\n"), f.tell()
+                else:
+                    if proc is not None and proc.returncode is not None:
+                        # Process done — drain any remaining lines
+                        for line in f:
+                            yield line.rstrip("\n"), f.tell()
+                        break
+                    await asyncio.sleep(0.05)
+        finally:
+            f.close()
 
     def format_tool_progress(self, name: str, params: dict) -> str:
         """Format a tool call into a human-readable progress string.

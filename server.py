@@ -246,7 +246,13 @@ async def _restore_sessions_after_crash() -> None:
     Runs as a background task on startup when no shutdown_clean flag is found.
     Instances are recreated in their original order. Unresolved instances get
     an auto-queued recovery message so the bot resumes the task automatically.
+
+    If a detached subprocess is still running (survived the crash), we reconnect
+    to its log file and deliver its output when it finishes. If the subprocess
+    already finished while we were down, we deliver unread log output immediately.
     """
+    from runners.base import RunnerBase
+
     await asyncio.sleep(0.5)  # let startup fully complete first
 
     sessions = _session_store.get_all_sessions(CLI_RUNNER)
@@ -278,7 +284,42 @@ async def _restore_sessions_after_crash() -> None:
                 if CLI_RUNNER == "codex":
                     inst.adapter_data["thread_id"] = s["session_id"]
 
-            if s["status"] == "unresolved" and s.get("original_prompt"):
+            if s["status"] != "unresolved":
+                continue
+
+            # Check for a surviving detached subprocess first
+            sub_info = _session_store.get_subprocess_info(chat_id, CLI_RUNNER, num)
+            if sub_info:
+                pid = sub_info["subprocess_pid"]
+                log_file = sub_info["subprocess_log_file"]
+                offset = sub_info["subprocess_log_offset"] or 0
+                start_time = sub_info["subprocess_start_time"] or ""
+
+                if RunnerBase.is_pid_alive(pid, start_time):
+                    # Subprocess still running — reconnect to its log stream
+                    logger.info(
+                        "Reconnecting to live subprocess PID %d for chat %s inst %d",
+                        pid, chat_id, num,
+                    )
+                    asyncio.create_task(
+                        _reconnect_subprocess(chat_id, inst, log_file, offset, pid, num)
+                    )
+                    unresolved_count += 1
+                    continue
+                elif log_file and os.path.exists(log_file):
+                    # Subprocess finished while server was down — deliver unread output
+                    logger.info(
+                        "Subprocess for chat %s inst %d already finished; delivering log from offset %d",
+                        chat_id, num, offset,
+                    )
+                    asyncio.create_task(
+                        _deliver_subprocess_log(chat_id, inst, log_file, offset, num)
+                    )
+                    unresolved_count += 1
+                    continue
+
+            # No surviving subprocess — fall back to standard crash recovery
+            if s.get("original_prompt"):
                 unresolved_count += 1
                 inst.needs_recovery = True
 
@@ -304,6 +345,110 @@ async def _restore_sessions_after_crash() -> None:
             ALLOWED_USER_ID,
             f"\u267b\ufe0f Crash detected. Restoring {unresolved_count} active session(s)...",
         )
+
+
+def _extract_text_from_event(data: dict, text_parts: list) -> None:
+    """Extract assistant text from a stream-json event (handles claude + gemini + codex formats)."""
+    msg_type = data.get("type", "")
+    # Claude / Qwen format: type=assistant with content blocks
+    if msg_type == "assistant":
+        for block in data.get("message", {}).get("content", []):
+            if block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+    # Gemini format: type=message role=assistant
+    elif msg_type == "message" and data.get("role") == "assistant":
+        content = data.get("content", "")
+        if content:
+            text_parts.append(content)
+    # Claude result fallback
+    elif msg_type == "result":
+        result = data.get("result", "")
+        if result and not text_parts:  # only if we have nothing else
+            text_parts.append(result)
+    # Codex format: type=item.completed with agent_message item
+    elif msg_type == "item.completed":
+        item = data.get("item", {})
+        if item.get("type") == "agent_message":
+            text = item.get("text", "")
+            if text:
+                text_parts.append(text)
+
+
+async def _reconnect_subprocess(
+    chat_id: int, inst, log_file: str, start_offset: int, pid: int, inst_num: int
+) -> None:
+    """Tail a still-running subprocess log file and deliver its output to Telegram."""
+    from runners.base import RunnerBase
+
+    class _PidWatcher:
+        """Watches a PID and exposes returncode when it exits."""
+        def __init__(self, watched_pid):
+            self._pid = watched_pid
+            self.returncode = None
+
+        def check(self):
+            if self.returncode is not None:
+                return
+            try:
+                os.kill(self._pid, 0)  # 0 = just check existence
+            except (ProcessLookupError, PermissionError):
+                self.returncode = 0  # assume clean exit
+
+    watcher = _PidWatcher(pid)
+    text_parts: list[str] = []
+
+    async for line, offset in RunnerBase.tail_log_file(log_file, start_offset=start_offset, proc=watcher):
+        watcher.check()
+        if not line:
+            continue
+        # Update offset in DB so we don't re-read on next crash
+        _session_store.update_log_offset(chat_id, CLI_RUNNER, inst_num, offset)
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        _extract_text_from_event(data, text_parts)
+
+    if text_parts:
+        response = "".join(text_parts)
+        labeled = _label(inst, response, 0)
+        await send_message(chat_id, labeled, format_markdown=True)
+
+    _session_store.mark_resolved(chat_id, CLI_RUNNER, inst_num)
+    _session_store.clear_subprocess(chat_id, CLI_RUNNER, inst_num)
+    inst.subprocess_pid = 0
+    inst.subprocess_log_file = ""
+    inst.subprocess_start_time = ""
+
+
+async def _deliver_subprocess_log(
+    chat_id: int, inst, log_file: str, start_offset: int, inst_num: int
+) -> None:
+    """Read unprocessed portion of a finished subprocess log and deliver to Telegram."""
+    text_parts: list[str] = []
+
+    try:
+        with open(log_file, "r", errors="replace") as f:
+            f.seek(start_offset)
+            for line in f:
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                _extract_text_from_event(data, text_parts)
+    except OSError:
+        pass
+
+    if text_parts:
+        response = "".join(text_parts)
+        labeled = _label(inst, response, 0)
+        await send_message(chat_id, labeled, format_markdown=True)
+
+    _session_store.mark_resolved(chat_id, CLI_RUNNER, inst_num)
+    _session_store.clear_subprocess(chat_id, CLI_RUNNER, inst_num)
 
 
 # -- Lifespan ----------------------------------------------------------------
@@ -845,10 +990,22 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
 
     sender_name = USER_NAMES.get(user_id, "") if user_id else ""
     prefixed_text = f"[{sender_name}]: {text}" if sender_name else text
-    response = await runner.run(prefixed_text, on_progress=on_progress, memory_context=memory_context, instance=inst)
+
+    def _on_subprocess_started(pid: int, log_file: str, start_time: str) -> None:
+        _session_store.set_subprocess(chat_id, CLI_RUNNER, inst.id, pid, log_file, start_time)
+
+    response = await runner.run(
+        prefixed_text,
+        on_progress=on_progress,
+        memory_context=memory_context,
+        instance=inst,
+        on_subprocess_started=_on_subprocess_started,
+        chat_id=chat_id,
+    )
     elapsed = time.time() - start
 
-    # --- Session store: log response and update session_id ---
+    # --- Session store: clear subprocess tracking and log response ---
+    _session_store.clear_subprocess(chat_id, CLI_RUNNER, inst.id)
     _session_store.log_message(chat_id, CLI_RUNNER, inst.id, "assistant", response)
     _session_store.update_session_id(chat_id, CLI_RUNNER, inst.id, inst.session_id)
 

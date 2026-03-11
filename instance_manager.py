@@ -56,6 +56,10 @@ class Instance:
     # Crash recovery: True when this instance was restored after a crash and
     # the next message is the auto-recovery prompt (not a fresh user message).
     needs_recovery: bool = field(default=False, repr=False, compare=False)
+    # Subprocess survival tracking — set after spawning the detached wrapper
+    subprocess_pid: int = field(default=0, repr=False, compare=False)
+    subprocess_log_file: str = field(default="", repr=False, compare=False)
+    subprocess_start_time: str = field(default="", repr=False, compare=False)
 
     def __post_init__(self):
         self.queue = asyncio.Queue(maxsize=MAX_INSTANCE_QUEUE)
