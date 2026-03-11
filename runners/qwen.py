@@ -293,6 +293,16 @@ class QwenRunner(RunnerBase):
             instance.subprocess_start_time = ""
             return "\U0001f6d1 Stopped."
 
+        # Handle stall before checking returncode — stall kills the process (returncode -9)
+        # so we must check _stalled first or it falls into the generic error handler.
+        if _stalled:
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
+            if assistant_text_parts:
+                return "".join(assistant_text_parts)
+            return "\u23f0 Qwen got stuck processing a large request (stalled with no output for 90s). Try a more specific question."
+
         if proc.returncode == 0:
             instance.session_started = True
             if _usage:
@@ -321,10 +331,6 @@ class QwenRunner(RunnerBase):
                 return "\u26a0\ufe0f Qwen request quota reached. Try again later."
             return "\u274c Qwen exited with an error."
 
-        if _stalled:
-            if assistant_text_parts:
-                return "".join(assistant_text_parts)
-            return "\u23f0 Qwen got stuck processing a large request (stalled with no output for 90s). Try a more specific question."
 
         if final_result:
             return final_result
