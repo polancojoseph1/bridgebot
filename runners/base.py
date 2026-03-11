@@ -197,10 +197,12 @@ class RunnerBase(ABC):
         log_path: str,
         start_offset: int = 0,
         proc=None,
+        stall_timeout: float | None = None,
     ) -> AsyncGenerator[tuple, None]:
         """Async generator: tail a log file, yielding (line, offset) as they appear.
 
         Polls every 50ms. Stops when proc exits (if provided) and all lines are read.
+        If stall_timeout is set, stops if no new output arrives for that many seconds.
         """
         # Wait up to 3s for the log file to be created by the subprocess
         f = None
@@ -215,9 +217,11 @@ class RunnerBase(ABC):
 
         try:
             f.seek(start_offset)
+            last_data_time = asyncio.get_event_loop().time()
             while True:
                 line = f.readline()
                 if line:
+                    last_data_time = asyncio.get_event_loop().time()
                     yield line.rstrip("\n"), f.tell()
                 else:
                     if proc is not None and proc.returncode is not None:
@@ -225,6 +229,9 @@ class RunnerBase(ABC):
                         for line in f:
                             yield line.rstrip("\n"), f.tell()
                         break
+                    if stall_timeout is not None:
+                        if asyncio.get_event_loop().time() - last_data_time >= stall_timeout:
+                            break  # stalled — caller handles cleanup
                     await asyncio.sleep(0.05)
         finally:
             f.close()
@@ -241,9 +248,7 @@ class RunnerBase(ABC):
             return f"\u270f\ufe0f Edit: {params.get('file_path', '')}"
         elif name in ("Write", "write_file", "write_new_file", "apply_patch"):
             return f"\U0001f4dd Write: {params.get('file_path', params.get('path', ''))}"
-        elif name == "read_file":
-            return f"\U0001f4c4 Read: {params.get('file_path', params.get('path', ''))}"
-        elif name in ("Read", "Grep", "Glob", "list_directory"):
+        elif name in ("Read", "Grep", "Glob", "read_file", "glob", "grep_search", "list_directory"):
             # Silent — noisy filesystem lookups not worth surfacing to user
             return ""
         elif name in ("WebFetch", "web_fetch"):

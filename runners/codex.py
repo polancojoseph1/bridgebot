@@ -124,6 +124,9 @@ class CodexRunner(RunnerBase):
 
         if item_type == "command_execution":
             cmd = item.get("command", "")
+            # Don't show direct Telegram API calls — Codex shouldn't send messages itself
+            if "api.telegram.org" in cmd:
+                return ""
             for prefix in (
                 "/bin/zsh -lc '", '/bin/zsh -lc "',
                 "/bin/sh -lc '", '/bin/sh -lc "',
@@ -165,22 +168,7 @@ class CodexRunner(RunnerBase):
                 return f"\U0001f527 {name}"
 
         if item_type == "reasoning":
-            # Format reasoning as a structured expandable blockquote
-            summary = item.get("summary", [])
-            if summary:
-                if isinstance(summary, list) and summary:
-                    # Build bullet list from summary items
-                    items = [s.get("text", "").strip() if isinstance(s, dict) else str(s).strip()
-                             for s in summary]
-                    items = [s for s in items if s]
-                    text = ("• " + "\n• ".join(items)) if items else ""
-                else:
-                    text = str(summary).strip()
-            else:
-                text = item.get("text", "").strip()
-            if not text:
-                return ""
-            return self._format_thinking(text)
+            return ""  # thinking mode removed — drop silently
 
         return ""
 
@@ -301,9 +289,19 @@ class CodexRunner(RunnerBase):
         assistant_text_parts: list[str] = []
         captured_thread_id: str | None = None
         _usage = {"input": 0, "output": 0}
+        # Pending agent_message: held until next agent_message or end-of-turn.
+        # Intermediate messages (planning/status) are flushed as progress; only
+        # the last agent_message is kept as the final response.
+        _pending_agent_msg: str = ""
+
+        async def _flush_pending_as_progress():
+            nonlocal _pending_agent_msg
+            if _pending_agent_msg and on_progress:
+                await on_progress(f"\U0001f4ad {_pending_agent_msg}")
+            _pending_agent_msg = ""
 
         async def process_stream():
-            nonlocal captured_thread_id
+            nonlocal captured_thread_id, _pending_agent_msg
             async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
@@ -332,7 +330,9 @@ class CodexRunner(RunnerBase):
                     if item_type == "agent_message":
                         text = item.get("text", "")
                         if text:
-                            assistant_text_parts.append(text)
+                            # Flush previous agent_message as progress (it was intermediate)
+                            await _flush_pending_as_progress()
+                            _pending_agent_msg = text
                     elif on_progress:
                         progress = self._format_codex_progress(item)
                         if progress:
@@ -342,6 +342,10 @@ class CodexRunner(RunnerBase):
                     usage = data.get("usage", {})
                     _usage["input"] = usage.get("input_tokens", 0)
                     _usage["output"] = usage.get("output_tokens", 0)
+
+            # Collect the final (last) agent_message as the response
+            if _pending_agent_msg:
+                assistant_text_parts.append(_pending_agent_msg)
 
             await proc.wait()
 

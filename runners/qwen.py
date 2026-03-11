@@ -202,9 +202,11 @@ class QwenRunner(RunnerBase):
         assistant_text_parts: list[str] = []
         _usage: dict = {}
 
+        _stalled = False
+
         async def process_stream():
-            nonlocal final_result
-            async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
+            nonlocal final_result, _stalled
+            async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc, stall_timeout=90):
                 if not line:
                     continue
                 try:
@@ -218,29 +220,43 @@ class QwenRunner(RunnerBase):
                     usage = data.get("message", {}).get("usage")
                     if usage:
                         _usage.update(usage)
-                    for block in data.get("message", {}).get("content", []):
+                    content_blocks = data.get("message", {}).get("content", [])
+                    # Pre-compute which positions have a tool_use (for look-ahead on text blocks)
+                    tool_use_positions = {i for i, b in enumerate(content_blocks) if b.get("type") == "tool_use"}
+                    for i, block in enumerate(content_blocks):
                         block_type = block.get("type", "")
-                        if block_type == "text":
-                            text = block.get("text", "")
-                            if text:
-                                assistant_text_parts.append(text)
-                        elif block_type == "tool_use" and on_progress:
+                        if block_type == "tool_use" and on_progress:
                             progress = self.format_tool_progress(
                                 block.get("name", ""), block.get("input", {}))
                             if progress:
                                 await on_progress(progress)
-                        elif block_type == "thinking" and on_progress:
-                            thought = block.get("thinking", "").strip()
-                            if thought:
-                                formatted = self._format_thinking(thought)
-                                if formatted:
-                                    await on_progress(formatted)
+                        elif block_type == "thinking":
+                            pass  # thinking mode removed — drop silently
+                        elif block_type == "text":
+                            text = block.get("text", "")
+                            if text:
+                                # Narrative text (tool follows) → live progress.
+                                # Final answer text (no tool follows) → keep for response.
+                                has_tool_after = any(j > i for j in tool_use_positions)
+                                if has_tool_after and on_progress:
+                                    await on_progress(text)
+                                else:
+                                    assistant_text_parts.append(text)
 
                 elif msg_type == "result":
                     final_result = data.get("result", "")
                     _usage["total_tokens"] = data.get("usage", {}).get("total_tokens", 0)
 
-            await proc.wait()
+            # If process is still alive after stall_timeout, mark stalled and kill it
+            if proc.returncode is None:
+                _stalled = True
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except ProcessLookupError:
+                    pass
+            else:
+                await proc.wait()
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
@@ -298,6 +314,11 @@ class QwenRunner(RunnerBase):
             if "quota" in _log_lower or "429" in _log_lower or "rate" in _log_lower:
                 return "\u26a0\ufe0f Qwen request quota reached. Try again later."
             return "\u274c Qwen exited with an error."
+
+        if _stalled:
+            if assistant_text_parts:
+                return "".join(assistant_text_parts)
+            return "\u23f0 Qwen got stuck processing a large request (stalled with no output for 90s). Try a more specific question."
 
         if final_result:
             return final_result

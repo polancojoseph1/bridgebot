@@ -198,13 +198,29 @@ class ClaudeRunner(RunnerBase):
             on_subprocess_started(proc.pid, log_path, instance.subprocess_start_time)
 
         final_result = ""
-        assistant_text_parts: list[str] = []
+        _pending_text: str = ""
         _usage = {"turn": {}, "context_window": 0, "cost": 0.0}
         _agent_calls: dict[str, dict] = {}
         _agent_counter = 0
 
+        async def _flush_text_as_progress():
+            nonlocal _pending_text
+            if _pending_text and on_progress:
+                text = _pending_text
+                # Strip everything from the first code block onward — keep only prose
+                for fence in ("```", "~~~"):
+                    if fence in text:
+                        text = text[:text.index(fence)]
+                text = text.strip()
+                if text:
+                    # Take just the first paragraph
+                    first_para = text.split("\n\n")[0].strip()
+                    if first_para:
+                        await on_progress(f"\U0001f4ad {first_para[:200]}")
+            _pending_text = ""
+
         async def process_stream():
-            nonlocal final_result, _agent_counter
+            nonlocal final_result, _agent_counter, _pending_text
             async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
@@ -219,9 +235,12 @@ class ClaudeRunner(RunnerBase):
                     turn_usage = data.get("message", {}).get("usage")
                     if turn_usage:
                         _usage["turn"] = turn_usage
-                    for block in data.get("message", {}).get("content", []):
+                    content_blocks = data.get("message", {}).get("content", [])
+                    for block in content_blocks:
                         block_type = block.get("type", "")
                         if block_type == "tool_use":
+                            # A tool call means the pending text was narrative — flush it as progress
+                            await _flush_text_as_progress()
                             tool_name = block.get("name", "")
                             tool_inp = block.get("input", {})
                             tool_id = block.get("id", "")
@@ -235,16 +254,15 @@ class ClaudeRunner(RunnerBase):
                                 progress = self.format_tool_progress(tool_name, tool_inp)
                                 if progress:
                                     await on_progress(progress)
-                        elif block_type == "thinking" and on_progress:
-                            thought = block.get("thinking", "").strip()
-                            if thought:
-                                formatted = self._format_thinking(thought)
-                                if formatted:
-                                    await on_progress(formatted)
+                        elif block_type == "thinking":
+                            pass  # thinking mode removed — drop silently
                         elif block_type == "text":
                             text = block.get("text", "")
                             if text:
-                                assistant_text_parts.append(text)
+                                # Flush the previous text turn as progress, hold this one pending.
+                                # The last text turn will become the final response.
+                                await _flush_text_as_progress()
+                                _pending_text = text
 
                 elif msg_type == "user":
                     for block in data.get("message", {}).get("content", []):
@@ -320,6 +338,6 @@ class ClaudeRunner(RunnerBase):
 
         if final_result:
             return final_result
-        if assistant_text_parts:
-            return "\n".join(assistant_text_parts)
+        if _pending_text:
+            return _pending_text
         return "(empty response from Claude)"

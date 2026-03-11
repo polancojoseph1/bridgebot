@@ -22,7 +22,7 @@ from config import (
     is_cli_available, validate_config, logger,
 )
 from runners import create_runner
-from telegram_handler import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client
+from telegram_handler import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client, register_bot_commands
 from image_handler import generate_image
 from voice_handler import download_voice, transcribe_audio, text_to_speech, cleanup_file
 import memory_handler
@@ -475,6 +475,22 @@ async def lifespan(application: FastAPI):
         logger.info("No WEBHOOK_URL set — starting long-poll mode")
         asyncio.create_task(_run_polling())
 
+    await register_bot_commands([
+        ("help",      "Show available commands"),
+        ("new",       "Start a new conversation"),
+        ("stop",      "Stop current task & clear queue"),
+        ("status",    "Show server status"),
+        ("task",      "View/manage task list"),
+        ("remember",  "Save something to memory"),
+        ("memory",    "Memory stats & re-index"),
+        ("imagine",   "Generate an image"),
+        ("research",  "Company intel: vendors, contracts, forecast"),
+        ("voice",     "Toggle voice replies"),
+        ("server",    "Restart the bridge server"),
+        ("kill",      "Force-kill all AI processes"),
+        ("chrome",    "Toggle Chrome browser integration"),
+    ])
+
     # Crash detection: if shutdown_clean flag is absent, the last run crashed
     _crashed = not os.path.exists(_SHUTDOWN_FLAG)
     if not _crashed:
@@ -893,6 +909,10 @@ def _label(instance, response: str, owner_id: int = 0, show_emoji: bool = True) 
     if len(owner_insts) >= 2 and instance:
         disp = instances.display_num(instance.id, owner_id)
         return f"{prefix}**[#{disp}: {instance.title}]**\n{response}"
+    # If response starts with a markdown header, put the emoji on its own line
+    # so the header regex (^## ...) can match at the start of the next line.
+    if prefix and response.lstrip().startswith("#"):
+        return f"{prefix}\n{response}"
     return f"{prefix}{response}" if prefix else response
 
 

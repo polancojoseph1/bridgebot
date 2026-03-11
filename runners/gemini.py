@@ -213,10 +213,9 @@ class GeminiRunner(RunnerBase):
         assistant_text_parts: list[str] = []
         captured_session_id: str | None = None
         _usage = {"input": 0, "output": 0, "total": 0}
-        _planning_sent = False  # only forward first delta as a 💭 status
 
         async def process_stream():
-            nonlocal captured_session_id, _planning_sent
+            nonlocal captured_session_id
             async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
@@ -243,10 +242,6 @@ class GeminiRunner(RunnerBase):
                     role = data.get("role", "")
                     content = data.get("content", "")
                     if role == "assistant" and content:
-                        # Show a static expandable thinking bubble on the first non-delta message
-                        if not _planning_sent and not data.get("delta") and on_progress:
-                            await on_progress("<blockquote>\U0001f4ad Working on your request...</blockquote>")
-                            _planning_sent = True
                         assistant_text_parts.append(content)
 
                 elif msg_type == "result":

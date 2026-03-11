@@ -276,6 +276,30 @@ async def get_updates(offset: int = 0, timeout: int = 30) -> list[dict]:
     return []
 
 
+async def register_bot_commands(commands: list[tuple[str, str]]) -> bool:
+    """Register bot commands with Telegram for the autocomplete menu.
+
+    Args:
+        commands: List of (command, description) tuples, e.g. [("help", "Show help")]
+    Returns True on success.
+    """
+    client = await get_client()
+    payload = [{"command": cmd, "description": desc} for cmd, desc in commands]
+    try:
+        resp = await client.post(
+            f"{TELEGRAM_API}/setMyCommands",
+            json={"commands": payload},
+        )
+        data = resp.json()
+        if data.get("ok"):
+            logger.info("Bot commands registered (%d commands)", len(commands))
+            return True
+        logger.error("Bot command registration failed: %s", data)
+    except httpx.HTTPError as exc:
+        logger.error("Bot command registration HTTP error: %s", exc)
+    return False
+
+
 async def register_webhook(url: str) -> bool:
     """Register a webhook URL with Telegram. Returns True on success."""
     normalized_url = url.rstrip("/")
