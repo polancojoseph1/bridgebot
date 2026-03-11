@@ -202,9 +202,15 @@ class RunnerBase(ABC):
 
         Polls every 50ms. Stops when proc exits (if provided) and all lines are read.
         """
-        try:
-            f = open(log_path, "r", errors="replace")
-        except OSError:
+        # Wait up to 3s for the log file to be created by the subprocess
+        f = None
+        for _ in range(60):
+            try:
+                f = open(log_path, "r", errors="replace")
+                break
+            except OSError:
+                await asyncio.sleep(0.05)
+        if f is None:
             return
 
         try:
