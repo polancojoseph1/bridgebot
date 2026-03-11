@@ -244,12 +244,19 @@ class RunnerBase(ABC):
         if name in ("Bash", "shell", "bash", "run_shell_command", "exec_command"):
             cmd = params.get("command", params.get("cmd", ""))
             return f"\u26a1 Shell: {cmd[:200]}" if cmd else "\u26a1 Shell"
-        elif name in ("Edit", "edit_file"):
+        elif name in ("Edit", "edit", "edit_file"):
             return f"\u270f\ufe0f Edit: {params.get('file_path', '')}"
         elif name in ("Write", "write_file", "write_new_file", "apply_patch"):
             return f"\U0001f4dd Write: {params.get('file_path', params.get('path', ''))}"
-        elif name in ("Read", "Grep", "Glob", "read_file", "glob", "grep_search", "list_directory"):
-            # Silent — noisy filesystem lookups not worth surfacing to user
+        elif name == "read_file":
+            return f"\U0001f4c4 Read: {params.get('file_path', params.get('path', ''))}"
+        elif name == "list_directory":
+            return f"\U0001f4c2 List: {params.get('path', '')}"
+        elif name in ("grep_search",):
+            query = params.get("query", params.get("pattern", ""))
+            return f"\U0001f50d Grep: {query[:80]}" if query else "\U0001f50d Grep"
+        elif name in ("Read", "Grep", "Glob", "glob"):
+            # Silent — these are Claude Code's internal names, already handled above for qwen
             return ""
         elif name in ("WebFetch", "web_fetch"):
             return f"\U0001f310 Fetch: {params.get('url', '')}"

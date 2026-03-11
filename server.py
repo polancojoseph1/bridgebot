@@ -1062,9 +1062,9 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
         await delete_message(chat_id, thinking_msg_id)
 
     if not response or not response.strip():
-        response = "(no text response from Claude — check tool output)"
+        response = f"(no text response from {BOT_NAME} — check tool output)"
 
-    logger.info("Claude #%d responded in %.1fs (%d chars)", inst.id, elapsed, len(response))
+    logger.info("%s #%d responded in %.1fs (%d chars)", BOT_NAME, inst.id, elapsed, len(response))
 
     # Store in agent memory if this is a specialist agent, then run background self-critique
     if inst.agent_id:
@@ -1142,7 +1142,7 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
     response = await runner.run(prefixed_caption, on_progress=on_progress, image_path=image_path, instance=inst)
     elapsed = time.time() - start
 
-    logger.info("Claude #%d responded to photo in %.1fs (%d chars)", inst.id, elapsed, len(response))
+    logger.info("%s #%d responded to photo in %.1fs (%d chars)", BOT_NAME, inst.id, elapsed, len(response))
     response += _context_footer(inst)
     if thinking_msg_id:
         await delete_message(chat_id, thinking_msg_id)
@@ -1207,9 +1207,9 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
         await delete_message(chat_id, thinking_msg_id)
 
     if not response or not response.strip():
-        response = "(no text response from Claude — check tool output)"
+        response = f"(no text response from {BOT_NAME} — check tool output)"
 
-    logger.info("Claude #%d responded in %.1fs (%d chars)", inst.id, elapsed, len(response))
+    logger.info("%s #%d responded in %.1fs (%d chars)", BOT_NAME, inst.id, elapsed, len(response))
 
     # Store memory before appending footer
     asyncio.ensure_future(memory_handler.store_conversation(raw_prompt, response, user_id=user_id))
