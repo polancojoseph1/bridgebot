@@ -968,7 +968,12 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
         memory_context = await memory_handler.search_memory(text, user_id=user_id)
 
     async def on_progress(progress_text: str):
-        await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
+        if progress_text.startswith("<blockquote"):
+            # HTML thinking block — send with HTML parse mode, minimal instance label
+            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
+            await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
+        else:
+            await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     # --- Session store: mark this instance as actively processing ---
     if inst.needs_recovery:
@@ -1082,7 +1087,11 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
     start = time.time()
 
     async def on_progress(progress_text: str):
-        await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
+        if progress_text.startswith("<blockquote"):
+            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
+            await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
+        else:
+            await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     sender_name = USER_NAMES.get(user_id, "") if user_id else ""
     prefixed_caption = f"[{sender_name}]: {caption}" if sender_name else caption
@@ -1141,7 +1150,11 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
     memory_context = await memory_handler.search_memory(raw_prompt, user_id=user_id)
 
     async def on_progress(progress_text: str):
-        await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
+        if progress_text.startswith("<blockquote"):
+            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
+            await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
+        else:
+            await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     response = await runner.run(prompt, on_progress=on_progress, memory_context=memory_context, instance=inst)
     elapsed = time.time() - start

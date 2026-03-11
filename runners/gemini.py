@@ -243,11 +243,9 @@ class GeminiRunner(RunnerBase):
                     role = data.get("role", "")
                     content = data.get("content", "")
                     if role == "assistant" and content:
-                        # Forward the first planning delta as a 💭 status (like Claude thinking)
-                        if not _planning_sent and data.get("delta") and on_progress:
-                            brief = self._brief_thought(content)
-                            if brief:
-                                await on_progress(f"\U0001f4ad {brief}")
+                        # Show a static expandable thinking bubble on the first non-delta message
+                        if not _planning_sent and not data.get("delta") and on_progress:
+                            await on_progress("<blockquote>\U0001f4ad Working on your request...</blockquote>")
                             _planning_sent = True
                         assistant_text_parts.append(content)
 

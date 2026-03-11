@@ -6,6 +6,10 @@ and provides a uniform interface for:
   - Stateless one-shot queries
   - Session management (start, resume, reset)
   - Process lifecycle (start, stop, kill)
+
+Thinking display: runners emit thinking blocks as HTML expandable blockquotes
+via on_progress(). server.py detects strings starting with '<blockquote' and
+sends them with parse_mode='HTML' instead of Markdown.
 """
 
 from abc import ABC, abstractmethod
@@ -30,34 +34,33 @@ class RunnerBase(ABC):
     cli_command: str = ""       # binary name to find in PATH (e.g. "claude")
 
     @staticmethod
-    def _brief_thought(text: str, limit: int = 80) -> str:
-        """Condense a thinking/planning string for display as a status bubble.
+    def _format_thinking(text: str, max_chars: int = 3000) -> str:
+        """Format a full thinking block for Telegram expandable blockquote.
 
-        - Takes only the first line
-        - Strips common filler openers ("The user wants", "I need to", etc.)
-        - Truncates at the last word boundary before `limit` chars
-        - Appends … if truncated
+        Returns HTML string wrapped in <blockquote expandable> tags,
+        or empty string if text is empty.
+        The caller should send this with parse_mode="HTML".
+        server.py detects '<blockquote' prefix and handles the parse_mode automatically.
         """
-        line = text.strip().splitlines()[0] if text.strip() else ""
-        if not line:
+        import html as _html
+        text = text.strip()
+        if not text:
             return ""
-        # Strip redundant filler openers
-        _FILLERS = (
-            "the user wants to ", "the user wants ", "the user asked ",
-            "the user is asking ", "the user needs ",
-            "i need to ", "i will ", "i am going to ", "i should ", "i'm going to ",
-        )
-        lower = line.lower()
-        for filler in _FILLERS:
-            if lower.startswith(filler):
-                line = line[len(filler):]
-                line = line[0].upper() + line[1:] if line else line
-                break
-        # Truncate at word boundary
-        if len(line) <= limit:
-            return line
-        truncated = line[:limit].rsplit(" ", 1)[0].rstrip(",;:")
-        return truncated + "…"
+        # Truncate very long thoughts at a paragraph boundary
+        if len(text) > max_chars:
+            truncated = text[:max_chars]
+            # Try to cut at last paragraph break
+            last_para = truncated.rfind("\n\n")
+            if last_para > max_chars // 2:
+                truncated = truncated[:last_para]
+            else:
+                # Fall back to last newline
+                last_nl = truncated.rfind("\n")
+                if last_nl > max_chars // 2:
+                    truncated = truncated[:last_nl]
+            text = truncated + "\n\n[...]"
+        escaped = _html.escape(text)
+        return f"<blockquote expandable>\U0001f4ad {escaped}</blockquote>"
 
     def discover_binary(self) -> str:
         """Find the CLI binary in PATH. Raises FileNotFoundError if missing."""

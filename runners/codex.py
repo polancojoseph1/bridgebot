@@ -165,14 +165,22 @@ class CodexRunner(RunnerBase):
                 return f"\U0001f527 {name}"
 
         if item_type == "reasoning":
-            # Surface first line of reasoning as a brief thought bubble
+            # Format reasoning as a structured expandable blockquote
             summary = item.get("summary", [])
             if summary:
-                text = " ".join(s.get("text", "") for s in summary if isinstance(s, dict)).strip()
+                if isinstance(summary, list) and summary:
+                    # Build bullet list from summary items
+                    items = [s.get("text", "").strip() if isinstance(s, dict) else str(s).strip()
+                             for s in summary]
+                    items = [s for s in items if s]
+                    text = ("• " + "\n• ".join(items)) if items else ""
+                else:
+                    text = str(summary).strip()
             else:
                 text = item.get("text", "").strip()
-            brief = self._brief_thought(text) if text else ""
-            return f"\U0001f4ad {brief}" if brief else ""
+            if not text:
+                return ""
+            return self._format_thinking(text)
 
         return ""
 

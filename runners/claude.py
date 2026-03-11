@@ -238,8 +238,9 @@ class ClaudeRunner(RunnerBase):
                         elif block_type == "thinking" and on_progress:
                             thought = block.get("thinking", "").strip()
                             if thought:
-                                brief = self._brief_thought(thought)
-                                await on_progress(f"\U0001f4ad {brief}")
+                                formatted = self._format_thinking(thought)
+                                if formatted:
+                                    await on_progress(formatted)
                         elif block_type == "text":
                             text = block.get("text", "")
                             if text:
