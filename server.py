@@ -1067,7 +1067,7 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
     """Handle an incoming photo: download, send to Claude for vision analysis."""
     inst = instance or instances.active
     proc_owner_id = 0 if user_id == ALLOWED_USER_ID else user_id
-    await send_message(chat_id, _label(inst, "\U0001f4f7 Downloading image...", proc_owner_id), format_markdown=True)
+    await send_message(chat_id, _label(inst, "Downloading image...", proc_owner_id), format_markdown=True)
 
     image_path = None
     try:
