@@ -235,15 +235,19 @@ class QwenRunner(RunnerBase):
                                 _any_progress_sent = True
                                 await on_progress("\U0001f4c2 Working...")
                         elif block_type == "thinking":
-                            pass  # thinking mode removed — drop silently
+                            thinking_text = block.get("thinking", block.get("text", ""))
+                            if thinking_text and on_progress:
+                                formatted = self._format_thinking(thinking_text)
+                                if formatted:
+                                    await on_progress(formatted)
                         elif block_type == "text":
                             text = block.get("text", "")
                             if text:
-                                # Narrative text (tool follows) → live progress.
-                                # Final answer text (no tool follows) → keep for response.
+                                # Narrative text (tool follows in same msg, or tools already fired) → live progress.
+                                # Pure-text response (no tools at all) → keep for response fallback.
                                 has_tool_after = any(j > i for j in tool_use_positions)
-                                if has_tool_after and on_progress:
-                                    await on_progress(text)
+                                if (has_tool_after or _any_progress_sent) and on_progress:
+                                    await on_progress(f"\U0001f4ad {text}")
                                 else:
                                     assistant_text_parts.append(text)
 

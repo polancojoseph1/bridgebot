@@ -928,6 +928,9 @@ async def _resolve_target_instance_async(text: str, user_id: int = 0):
 
 def _label(instance, response: str, owner_id: int = 0, show_emoji: bool = True) -> str:
     """Prefix response with instance label when the user has multiple instances."""
+    # Stop signals already carry their own 🛑 — don't prepend the bot emoji
+    if response.startswith("\U0001f6d1"):
+        show_emoji = False
     prefix = f"{BOT_EMOJI} " if BOT_EMOJI and show_emoji else ""
     owner_insts = instances.list_all(for_owner_id=owner_id)
     if len(owner_insts) >= 2 and instance:

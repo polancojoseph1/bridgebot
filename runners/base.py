@@ -249,7 +249,7 @@ class RunnerBase(ABC):
         elif name in ("Write", "write_file", "write_new_file", "apply_patch"):
             return f"\U0001f4dd Write: {params.get('file_path', params.get('path', ''))}"
         elif name == "read_file":
-            return f"\U0001f4c4 Read: {params.get('file_path', params.get('path', ''))}"
+            return f"\U0001f4c4 Read: {params.get('file_path', params.get('path', params.get('absolute_path', '')))}"
         elif name == "list_directory":
             return f"\U0001f4c2 List: {params.get('path', '')}"
         elif name in ("grep_search",):
