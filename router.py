@@ -5,12 +5,13 @@ a specific Claude instance. Only called when 2+ instances exist.
 """
 
 import logging
+import os
 
 import httpx
 
 logger = logging.getLogger("bridge.router")
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 ROUTER_MODEL = "qwen2.5:7b-instruct"
 ROUTER_TIMEOUT = 10.0  # seconds — keep it snappy
 

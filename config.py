@@ -127,6 +127,11 @@ def validate_config() -> list[str]:
         errors.append("ALLOWED_USER_ID is not set")
     if CLI_RUNNER not in ("claude", "gemini", "codex", "qwen", "generic"):
         errors.append(f"CLI_RUNNER='{CLI_RUNNER}' — must be claude, gemini, codex, qwen, or generic")
+    if CLI_RUNNER != "generic" and not is_cli_available():
+        errors.append(
+            f"CLI binary '{CLI_COMMAND}' not found in PATH — "
+            f"install it before starting the bot"
+        )
     return errors
 
 

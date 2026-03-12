@@ -162,6 +162,9 @@ async def text_to_speech_local(text: str) -> str:
         logger.info("Local TTS generated: %d chars -> %s", len(text), ogg_path)
         return ogg_path
 
+    except Exception:
+        cleanup_file(ogg_path)
+        raise
     finally:
         cleanup_file(aiff_path)
 
@@ -198,6 +201,9 @@ async def text_to_speech(text: str) -> str:
         logger.info("TTS generated: %d chars -> %s", len(text), ogg_path)
         return ogg_path
 
+    except Exception:
+        cleanup_file(ogg_path)
+        raise
     finally:
         # Always clean up the intermediate MP3
         cleanup_file(mp3_path)

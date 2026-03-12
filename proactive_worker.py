@@ -224,7 +224,7 @@ async def _check_and_fire() -> None:
 
 
 async def _fire_agent(agent_id: str, agent_name: str, task: str) -> None:
-    """Run the agent task and notify Jefe when done."""
+    """Run the agent task and notify the user when done."""
     from agent_manager import assign_task
     import time
 

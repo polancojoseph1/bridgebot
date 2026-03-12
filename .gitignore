@@ -31,3 +31,9 @@ Thumbs.db
 *.swp
 *.swo
 .env.*
+!.env.example
+
+# Secrets (live in ~/.jefe/secrets/ — never in repo)
+.env.claude
+.env.gemini
+.env.codex

@@ -473,7 +473,7 @@ async def _diagnose_mistake(agent_name: str, task_response_text: str, feedback: 
     )
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.5-flash:generateContent?key={api_key}"
+        f"gemini-2.5-flash:generateContent"
     )
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -481,7 +481,7 @@ async def _diagnose_mistake(agent_name: str, task_response_text: str, feedback: 
     }
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, json=payload, headers={"x-goog-api-key": api_key})
             resp.raise_for_status()
             data = resp.json()
             result = data["candidates"][0]["content"]["parts"][0]["text"].strip()

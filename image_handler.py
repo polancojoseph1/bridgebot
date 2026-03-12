@@ -22,7 +22,8 @@ async def generate_image(prompt: str) -> tuple[str, str]:
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY is not configured")
 
-    url = f"{GEMINI_API_BASE}/models/{IMAGE_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    url = f"{GEMINI_API_BASE}/models/{IMAGE_MODEL}:generateContent"
+    headers = {"x-goog-api-key": GEMINI_API_KEY}
 
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -32,7 +33,7 @@ async def generate_image(prompt: str) -> tuple[str, str]:
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(url, json=payload)
+        resp = await client.post(url, json=payload, headers=headers)
 
     if resp.status_code != 200:
         error_msg = resp.text[:500]

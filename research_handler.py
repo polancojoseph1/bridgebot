@@ -35,9 +35,15 @@ _runner = None
 _MEMORY_DIR = os.environ.get("MEMORY_DIR", str(Path.home() / "memories"))
 RESEARCH_DIR = Path(_MEMORY_DIR) / "Research"
 
-# SEC EDGAR requires a User-Agent with contact info per their access policy.
-# Set EDGAR_CONTACT in your .env to your email address.
-_EDGAR_CONTACT = os.environ.get("EDGAR_CONTACT", "research@example.com")
+# SEC EDGAR requires a User-Agent with real contact info per their access policy.
+# Set EDGAR_CONTACT=your@email.com in your .env file.
+_EDGAR_CONTACT = os.environ.get("EDGAR_CONTACT", "")
+if not _EDGAR_CONTACT:
+    logger.warning(
+        "EDGAR_CONTACT is not set — SEC EDGAR requests may be rate-limited or blocked. "
+        "Add EDGAR_CONTACT=your@email.com to your .env file."
+    )
+    _EDGAR_CONTACT = "user@example.com"
 EDGAR_HEADERS = {
     "User-Agent": f"TgCliBridgeResearch/1.0 ({_EDGAR_CONTACT})",
     "Accept": "application/json",
