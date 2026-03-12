@@ -27,10 +27,11 @@ async def close_client() -> None:
 
 
 def _convert_markdown_tables(text: str) -> str:
-    """Convert markdown pipe tables to <pre> monospace blocks.
+    """Convert markdown pipe tables for Telegram.
 
-    Telegram has no table support in HTML or MarkdownV2, so we render
-    tables as fixed-width text inside a <pre> block.
+    <= 4 columns: rendered as a monospace <pre> table.
+    >  4 columns: rendered as a numbered list (one entry per data row)
+                  since wide tables wrap badly on mobile.
     """
     lines = text.split("\n")
     result = []
@@ -57,34 +58,40 @@ def _convert_markdown_tables(text: str) -> str:
                 rows.append(cells)
             if not rows:
                 continue
-            # Calculate natural column widths
             num_cols = max(len(r) for r in rows)
-            widths = [0] * num_cols
-            for row in rows:
-                for j in range(min(len(row), num_cols)):
-                    widths[j] = max(widths[j], len(row[j]))
-            # Shrink columns proportionally if total exceeds mobile width (~42 chars)
-            MAX_WIDTH = 42
-            separators = 3 * (num_cols - 1)
-            if sum(widths) + separators > MAX_WIDTH:
-                available = max(num_cols * 3, MAX_WIDTH - separators)
-                ratio = available / sum(widths) if sum(widths) else 1
-                widths = [max(3, int(w * ratio)) for w in widths]
-                while sum(widths) + separators > MAX_WIDTH:
-                    widths[widths.index(max(widths))] -= 1
-            def _trunc(val, w):
-                return val if len(val) <= w else val[:w - 1] + "\u2026"
-            # Render with unicode box chars
-            rendered = []
-            for k, row in enumerate(rows):
-                padded = [
-                    _trunc(row[j] if j < len(row) else "", widths[j]).ljust(widths[j])
-                    for j in range(num_cols)
-                ]
-                rendered.append(" \u2502 ".join(padded).rstrip())
-                if k == 0:
-                    rendered.append("\u2500" * (sum(widths) + separators))
-            result.append("<pre>" + "\n".join(rendered) + "</pre>")
+            headers = rows[0]
+            data_rows = rows[1:]
+
+            if num_cols > 4:
+                # Wide table: render as numbered list entries
+                rendered = []
+                for idx, row in enumerate(data_rows, 1):
+                    lines_out = [f"<b>{idx}.</b>"]
+                    for j, header in enumerate(headers):
+                        val = row[j] if j < len(row) else ""
+                        if val:
+                            lines_out.append(f"  <b>{header}:</b> {val}")
+                    rendered.append("\n".join(lines_out))
+                result.append("\n\n".join(rendered))
+            else:
+                # Narrow table: render as monospace <pre> block
+                widths = [0] * num_cols
+                for row in rows:
+                    for j in range(min(len(row), num_cols)):
+                        widths[j] = max(widths[j], len(row[j]))
+                separators = 3 * (num_cols - 1)
+                def _trunc(val, w):
+                    return val if len(val) <= w else val[:w - 1] + "\u2026"
+                rendered = []
+                for k, row in enumerate(rows):
+                    padded = [
+                        _trunc(row[j] if j < len(row) else "", widths[j]).ljust(widths[j])
+                        for j in range(num_cols)
+                    ]
+                    rendered.append(" \u2502 ".join(padded).rstrip())
+                    if k == 0:
+                        rendered.append("\u2500" * (sum(widths) + separators))
+                result.append("<pre>" + "\n".join(rendered) + "</pre>")
         else:
             result.append(line)
             i += 1
