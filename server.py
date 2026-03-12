@@ -55,10 +55,6 @@ try:
 except ImportError:
     task_orchestrator = None  # type: ignore
 
-try:
-    import research_handler
-except ImportError:
-    research_handler = None  # type: ignore
 
 # Initialize the CLI runner
 runner = create_runner()
@@ -463,8 +459,6 @@ async def lifespan(application: FastAPI):
     else:
         logger.warning("claude CLI NOT found in PATH -- commands will fail")
     health.init()
-    if research_handler:
-        research_handler.init(runner)
     if task_orchestrator:
         task_orchestrator.init(runner)
     if WEBHOOK_URL:
@@ -493,9 +487,6 @@ async def lifespan(application: FastAPI):
         ("orch",      "Break task into parallel agents, synthesize results"),
         
         # Research & Intel
-        ("research",  "Company intel: vendors, contracts, SEC filings, forecast"),
-        ("objective", "Find companies pursuing a goal + what they're doing"),
-        
         # Memory & Tasks
         ("remember",  "Save something to memory"),
         ("memory",    "Memory stats & re-index files"),
@@ -504,9 +495,6 @@ async def lifespan(application: FastAPI):
         # Media & Voice
         ("imagine",   "Generate an image from prompt"),
         ("voice",     "Toggle voice replies mode"),
-        ("call",      "Join group voice chat"),
-        ("endcall",   "Leave group voice chat"),
-        
         # Browser & Tools
         ("chrome",    "Toggle Chrome browser integration"),
         ("model",     "Switch AI model: sonnet|opus|haiku"),
@@ -552,10 +540,6 @@ async def lifespan(application: FastAPI):
         asyncio.create_task(_restore_sessions_after_crash())
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
-    # Clean up voice call if active
-    from call_handler import end_call, get_manager
-    if get_manager() and get_manager().is_active:
-        await end_call()
     # Stop all instance workers
     for inst in instances.list_all():
         if inst.worker_task and not inst.worker_task.done():
@@ -695,58 +679,6 @@ async def process_update(body: dict) -> None:
         text = (text[:_space].lower() + text[_space:]) if _space != -1 else text.lower()
 
     # Bot commands -- handled directly (fast, no background needed)
-    # /call and /endcall are handled before queue-based commands
-    if text.startswith("/call") and not text.startswith("/chrome"):
-        await _handle_command(chat_id, text)
-        return
-
-    if text == "/endcall":
-        await _handle_command(chat_id, text)
-        return
-
-    # Gate text messages during an active voice call
-    from call_handler import get_manager
-    call_mgr = get_manager()
-    if call_mgr and call_mgr.is_active and not text.startswith("/"):
-        await send_message(
-            chat_id,
-            "\U0001f3a4 Voice call is active \u2014 speak in the group voice chat!\n"
-            "Use /endcall to leave the call first.",
-        )
-        return
-
-    # /research runs independently (fetches public data + Ollama analysis)
-    if text.startswith("/research"):
-        company = text[len("/research"):].strip()
-        if not company:
-            await send_message(chat_id, "Usage: /research <company name>\nExample: /research Apple Inc")
-            return
-        health.record_message()
-        asyncio.create_task(_process_research(chat_id, company))
-        return
-
-    # /objective — find companies pursuing a specific goal + what they're each doing
-    if text.startswith("/objective"):
-        objective = text[len("/objective"):].strip()
-        if not objective:
-            await send_message(
-                chat_id,
-                "Usage: /objective <goal or theme>\nExample: /objective improve voice-based AI",
-            )
-            return
-        health.record_message()
-        asyncio.create_task(_process_objective(chat_id, objective))
-        return
-
-    # /imagine is special -- it runs independently (uses Gemini, not Claude)
-    if text.startswith("/imagine"):
-        prompt = text[len("/imagine"):].strip()
-        if not prompt:
-            await send_message(chat_id, "Usage: /imagine <description of the image>")
-            return
-        health.record_message()
-        asyncio.create_task(_process_image_generation(chat_id, prompt))
-        return
 
     if text.startswith("/"):
         await _handle_command(chat_id, text, user_id=user_id)
@@ -1226,37 +1158,6 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
     await _extract_and_send_media(chat_id, response)
 
 
-async def _process_research(chat_id: int, company: str) -> None:
-    """Run company intelligence research and send the report."""
-    await send_message(
-        chat_id,
-        f"🔍 Researching <b>{company}</b>...\n"
-        "Pulling SEC filings, contracts, and news. This takes ~60s.",
-        parse_mode="HTML",
-    )
-    try:
-        report = await research_handler.research_company(company)
-        await send_message(chat_id, report, parse_mode="HTML")
-    except Exception as e:
-        logger.error("Research failed for %s: %s", company, e)
-        await send_message(chat_id, f"❌ Research failed: {e}")
-
-
-async def _process_objective(chat_id: int, objective: str) -> None:
-    """Find companies working toward an objective and what each is doing."""
-    await send_message(
-        chat_id,
-        f"🎯 Researching companies pursuing: <b>{objective}</b>\n"
-        "Scanning news + running analysis. ~60s.",
-        parse_mode="HTML",
-    )
-    try:
-        report = await research_handler.research_objective(objective)
-        await send_message(chat_id, report, parse_mode="HTML")
-    except Exception as e:
-        logger.error("Objective research failed for %s: %s", objective, e)
-        await send_message(chat_id, f"❌ Objective research failed: {e}")
-
 
 async def _process_image_generation(chat_id: int, prompt: str) -> None:
     """Generate an image using Gemini and send it to the user."""
@@ -1333,10 +1234,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "and reply with both text and voice.\n\n"
             "Commands:\n"
             "/imagine &lt;prompt&gt; \u2014 Generate an image\n"
-            "/research &lt;company&gt; \u2014 Company intel: vendors, contracts, forecast\n"
-            "/objective &lt;goal&gt; \u2014 Companies pursuing an objective + what each is doing\n"
-            "/call \u2014 Join group voice chat for live conversation\n"
-            "/endcall \u2014 Leave voice chat\n"
             "/stop \u2014 Stop current task & clear queue\n"
             "/kill \u2014 Force-kill all Claude processes\n"
             "/new \u2014 Start a new conversation\n"
@@ -1350,22 +1247,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/status \u2014 Server status\n"
             "/help \u2014 Show this help",
         )
-
-    elif cmd == "/call":
-        from call_handler import start_call
-
-        async def call_status(text):
-            await send_message(chat_id, text)
-
-        await start_call(on_status=call_status)
-
-    elif cmd == "/endcall":
-        from call_handler import end_call, get_manager
-        mgr = get_manager()
-        if mgr and mgr.is_active:
-            await end_call()
-        else:
-            await send_message(chat_id, "No active call.")
 
     elif cmd == "/getid":
         await send_message(chat_id, f"Chat ID: <code>{chat_id}</code>", parse_mode="HTML")
@@ -1451,17 +1332,12 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             inst_lines.append(f"{marker}#{disp_num} {inst.title}: {status} (queue: {q})")
         inst_status = "\n".join(inst_lines)
 
-        from call_handler import get_manager
-        call_mgr = get_manager()
-        call_state = call_mgr.state if call_mgr else "idle"
-
         await send_message(
             chat_id,
             f"Server uptime: {uptime_min:.1f} min\n"
             f"Messages processed: {info['message_count']}\n"
             f"Claude CLI available: {claude_ok}\n\n"
-            f"Instances:\n{inst_status}\n\n"
-            f"Voice call: {call_state}",
+            f"Instances:\n{inst_status}",
         )
 
     elif cmd == "/help":
@@ -1471,9 +1347,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         from config import MEMORY_ENABLED
         memory_status = "ON" if MEMORY_ENABLED else "OFF"
         ffmpeg_status = "available" if _shutil.which("ffmpeg") else "not installed"
-        from call_handler import get_manager
-        call_mgr = get_manager()
-        call_status = call_mgr.state if (call_mgr and call_mgr.is_active) else "off"
         active = instances.get_active_for(owner_id)
         user_inst_count = len(instances.list_all(for_owner_id=owner_id))
         inst_info = f"Active: #{instances.display_num(active.id, owner_id)} ({active.title})" if user_inst_count >= 2 else "1 instance running"
@@ -1482,8 +1355,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "**\U0001f3a8 Image Generation**\n"
             "/imagine <prompt> \u2014 Generate an image\n\n"
             "**\U0001f50d Research & Intel**\n"
-            "/research <company> \u2014 Company intel report: vendors, contracts, SEC filings, tactical forecast\n"
-            "/objective <goal> \u2014 Who is pursuing an objective + what each company is doing toward it\n\n"
             "**\U0001f916 Orchestration**\n"
             "/orch <task> \u2014 Break task into parallel agents, synthesize results\n\n"
             "**\U0001f916 Agents**\n"
@@ -1514,8 +1385,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "_Example: `@2 what's the status?` or `@Research summarize what you found`_\n"
             "_Creates the instance if it doesn\u2019t exist yet._\n\n"
             "**\U0001f3a4 Voice**\n"
-            f"/call \u2014 Join group voice chat [{call_status}]\n"
-            "/endcall \u2014 Leave voice chat\n"
             f"/voice \u2014 Toggle voice replies [{voice_status}]\n\n"
             "**\u2699\ufe0f Control**\n"
             "/new \u2014 Reset conversation for the active instance\n"
