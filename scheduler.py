@@ -1,411 +1,403 @@
-"""scheduler.py — File-based task scheduler.
+"""scheduler.py — Simple in-process task scheduler.
 
-Reads tasks from MEMORY_DIR/SCHEDULE.md, runs them via the configured CLI, and
-tracks status and reports in MEMORY_DIR/.
+Schedules are stored in SQLite and managed entirely via Telegram commands:
+    /schedule every day 9am summarize AI news
+    /schedule every 2h check for new emails
+    /schedule once 2026-03-20 14:00 send weekly report
+    /schedules                  ← list active schedules
+    /unschedule 3               ← cancel by ID
 
-Schedule file format (SCHEDULE.md):
-    | ID | Scheduled Time     | Task Description | Assigned To   | Status       | Tester Status | Report Path | Recurrence |
-    |:---|:---|:---|:---|:---|:---|:---|:---|
-    | 1  | 2026-01-01 09:00   | Summarize news   | Claude-Worker | [ ] Pending  | [ ] Waiting   |             | daily 09:00 |
-
-Recurrence formats:
-    once / empty   → one-shot
-    every Xm       → every X minutes
-    every Xh       → every X hours
-    every Xd       → every X days
-    daily HH:MM    → every day at HH:MM
-    weekly DAY HH:MM → every week on DAY at HH:MM
+No file editing required. Survives restarts (SQLite persists state).
+Runs inside the FastAPI process using asyncio — no external daemon needed.
 """
 
 import asyncio
 import logging
-import os
 import re
-import subprocess
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from dotenv import dotenv_values
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('scheduler')
+logger = logging.getLogger(__name__)
 
-# All paths derived from MEMORY_DIR (same env var as config.py)
-_MEMORY_DIR = os.environ.get("MEMORY_DIR", str(Path.home() / "memories"))
-SCHEDULE_FILE = str(Path(_MEMORY_DIR) / "SCHEDULE.md")
-REPORTS_DIR = str(Path(_MEMORY_DIR) / "task_reports")
-REPORT_DONE_FILE = str(Path(_MEMORY_DIR) / "tasks_done.md")
-
-TIMEZONE = os.environ.get('TIMEZONE', 'America/New_York')
+TIMEZONE = "America/New_York"
 _TZ = ZoneInfo(TIMEZONE)
-TASK_TIMEOUT = int(os.environ.get('TASK_TIMEOUT', '300'))  # seconds
-
-# Load bot credentials from .env for worker context
-_env_path = Path(__file__).parent / '.env'
-_env_vars = dotenv_values(_env_path)
-BOT_TOKEN = _env_vars.get('TELEGRAM_BOT_TOKEN', '')
-CHAT_ID = _env_vars.get('ALLOWED_USER_ID', '')
+_CHECK_INTERVAL = 30   # seconds between schedule checks
+_DEFAULT_TIMEOUT = 300  # seconds per task run
 
 
-def get_now() -> datetime:
-    return datetime.now(_TZ)
+# ---------------------------------------------------------------------------
+# DB setup
+# ---------------------------------------------------------------------------
+
+def _get_db_path() -> str:
+    import os
+    data_dir = Path(os.path.expanduser(
+        os.environ.get("TG_BRIDGE_DATA_DIR", "~/.tg-cli-bridge")
+    ))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return str(data_dir / "schedules.db")
 
 
-def send_telegram(text: str) -> None:
-    """Send a Telegram notification via the bot API (sync, for use in thread context)."""
-    if not BOT_TOKEN or not CHAT_ID:
-        logger.warning("BOT_TOKEN or CHAT_ID not set — cannot send Telegram notification")
-        return
-    try:
-        import httpx
-        resp = httpx.post(
-            f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',
-            json={'chat_id': CHAT_ID, 'text': text},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            logger.info(f'Telegram notification sent: {text[:80]}')
-    except Exception as e:
-        logger.error(f'Failed to send Telegram notification: {e}')
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(_get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-WEEKDAY_MAP = {
-    'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3, 'fri': 4, 'sat': 5, 'sun': 6,
-    'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
-    'friday': 4, 'saturday': 5, 'sunday': 6,
+def _init_db() -> None:
+    with _connect() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schedules (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id     INTEGER NOT NULL,
+                description TEXT    NOT NULL,
+                recurrence  TEXT    NOT NULL,
+                next_run    TEXT    NOT NULL,
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL
+            )
+        """)
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Time parsing
+# ---------------------------------------------------------------------------
+
+_WEEKDAYS = {
+    "mon": 0, "monday": 0,
+    "tue": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2,
+    "thu": 3, "thursday": 3,
+    "fri": 4, "friday": 4,
+    "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
 }
 
+_TIME_RE = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", re.IGNORECASE)
 
-def parse_recurrence(recurrence_str: str):
-    """Parse a recurrence string and return (type, value) or None for one-shot."""
-    if not recurrence_str:
-        return None
-    s = recurrence_str.strip().lower()
-    if s in ('once', '-', ''):
-        return None
 
-    m = re.match(r'^every\s+(\d+)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)$', s)
+def _parse_time(s: str) -> tuple[int, int] | None:
+    """Parse a time string like '9am', '9:30', '14:00' → (hour, minute)."""
+    m = _TIME_RE.fullmatch(s.strip())
+    if not m:
+        return None
+    h, mins, ampm = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+    if ampm == "pm" and h != 12:
+        h += 12
+    if ampm == "am" and h == 12:
+        h = 0
+    if not (0 <= h <= 23 and 0 <= mins <= 59):
+        return None
+    return h, mins
+
+
+def parse_recurrence(text: str) -> tuple[str, dict] | None:
+    """Parse a natural-language recurrence string.
+
+    Returns (recurrence_type, params) or None if unrecognised.
+
+    Types:
+        "interval"  — params: {minutes: int}
+        "daily"     — params: {hour: int, minute: int}
+        "weekly"    — params: {weekday: int, hour: int, minute: int}
+        "once"      — params: {dt: str}  ISO datetime string
+    """
+    s = text.strip().lower()
+
+    # --- interval: "every 30m", "every 2h", "every 1d" ---
+    m = re.match(r"every\s+(\d+)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)\b", s)
     if m:
         val = int(m.group(1))
         unit = m.group(2)[0]
-        unit_map = {'m': 'minutes', 'h': 'hours', 'd': 'days'}
-        return (unit_map[unit], val)
+        minutes = {"m": val, "h": val * 60, "d": val * 1440}[unit]
+        return ("interval", {"minutes": minutes})
 
-    m = re.match(r'^daily(?:\s+(\d{1,2}:\d{2}))?$', s)
+    # --- daily: "daily", "every day", "daily 9am", "every day at 9:30" ---
+    m = re.match(r"(?:daily|every\s+day)(?:\s+(?:at\s+)?(\S+))?$", s)
     if m:
-        time_str = m.group(1) or '00:00'
-        return ('daily', time_str)
+        time_str = m.group(1) or "09:00"
+        parsed = _parse_time(time_str)
+        if parsed:
+            return ("daily", {"hour": parsed[0], "minute": parsed[1]})
 
-    m = re.match(r'^weekly\s+(\w+)(?:\s+(\d{1,2}:\d{2}))?$', s)
+    # --- weekly: "every monday", "weekly monday 9am", "every mon at 9:00" ---
+    m = re.match(r"(?:every|weekly)\s+(\w+)(?:\s+(?:at\s+)?(\S+))?$", s)
     if m:
-        day = m.group(1).lower()
-        time_str = m.group(2) or '00:00'
-        if day in WEEKDAY_MAP:
-            return ('weekly', (day, time_str))
+        day_str = m.group(1)
+        if day_str in _WEEKDAYS:
+            time_str = m.group(2) or "09:00"
+            parsed = _parse_time(time_str)
+            if parsed:
+                return ("weekly", {
+                    "weekday": _WEEKDAYS[day_str],
+                    "hour": parsed[0],
+                    "minute": parsed[1],
+                })
+
+    # --- once: "once 2026-03-20", "once 2026-03-20 14:00", "once tomorrow 9am" ---
+    m = re.match(r"once\s+(.+)$", s)
+    if m:
+        date_str = m.group(1).strip()
+        now = _now()
+
+        if date_str.startswith("tomorrow"):
+            rest = date_str[len("tomorrow"):].strip()
+            parsed = _parse_time(rest) if rest else (9, 0)
+            if parsed:
+                dt = (now + timedelta(days=1)).replace(
+                    hour=parsed[0], minute=parsed[1], second=0, microsecond=0
+                )
+                return ("once", {"dt": dt.isoformat()})
+
+        # ISO date: YYYY-MM-DD [HH:MM]
+        dm = re.match(r"(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?$", date_str)
+        if dm:
+            date_part = dm.group(1)
+            time_part = dm.group(2) or "09:00"
+            parsed = _parse_time(time_part)
+            if parsed:
+                dt = datetime.strptime(date_part, "%Y-%m-%d").replace(
+                    hour=parsed[0], minute=parsed[1], tzinfo=_TZ
+                )
+                return ("once", {"dt": dt.isoformat()})
 
     return None
 
 
-def calc_next_run(recurrence, last_run_time: datetime) -> datetime | None:
-    """Given a parsed recurrence and the last run time, return the next run datetime."""
-    rtype, rval = recurrence
+def recurrence_label(recurrence: str, params: dict) -> str:
+    """Human-readable description of a recurrence."""
+    if recurrence == "interval":
+        mins = params["minutes"]
+        if mins < 60:
+            return f"every {mins}m"
+        if mins % 1440 == 0:
+            return f"every {mins // 1440}d"
+        if mins % 60 == 0:
+            return f"every {mins // 60}h"
+        return f"every {mins}m"
+    if recurrence == "daily":
+        return f"daily at {params['hour']:02d}:{params['minute']:02d}"
+    if recurrence == "weekly":
+        day = [k for k, v in _WEEKDAYS.items() if v == params["weekday"] and len(k) > 3][0]
+        return f"every {day.capitalize()} at {params['hour']:02d}:{params['minute']:02d}"
+    if recurrence == "once":
+        return f"once at {params['dt'][:16]}"
+    return recurrence
 
-    if rtype == 'minutes':
-        return last_run_time + timedelta(minutes=rval)
-    elif rtype == 'hours':
-        return last_run_time + timedelta(hours=rval)
-    elif rtype == 'days':
-        return last_run_time + timedelta(days=rval)
-    elif rtype == 'daily':
-        h, m = map(int, rval.split(':'))
-        next_run = last_run_time.replace(hour=h, minute=m, second=0, microsecond=0)
-        if next_run <= last_run_time:
+
+# ---------------------------------------------------------------------------
+# Next-run calculation
+# ---------------------------------------------------------------------------
+
+def _now() -> datetime:
+    return datetime.now(_TZ)
+
+
+def _calc_next_run(recurrence: str, params: dict, from_dt: datetime | None = None) -> datetime:
+    now = from_dt or _now()
+    if recurrence == "interval":
+        return now + timedelta(minutes=params["minutes"])
+    if recurrence == "daily":
+        next_run = now.replace(
+            hour=params["hour"], minute=params["minute"], second=0, microsecond=0
+        )
+        if next_run <= now:
             next_run += timedelta(days=1)
         return next_run
-    elif rtype == 'weekly':
-        day_str, time_str = rval
-        target_weekday = WEEKDAY_MAP[day_str]
-        h, m = map(int, time_str.split(':'))
-        next_run = last_run_time.replace(hour=h, minute=m, second=0, microsecond=0)
-        days_ahead = target_weekday - next_run.weekday()
+    if recurrence == "weekly":
+        next_run = now.replace(
+            hour=params["hour"], minute=params["minute"], second=0, microsecond=0
+        )
+        days_ahead = params["weekday"] - next_run.weekday()
         if days_ahead <= 0:
             days_ahead += 7
-        next_run += timedelta(days=days_ahead)
-        return next_run
-
-    return None
-
-
-def read_schedule() -> list[dict]:
-    if not os.path.exists(SCHEDULE_FILE):
-        return []
-    try:
-        with open(SCHEDULE_FILE, 'r') as f:
-            lines = f.readlines()
-
-        tasks = []
-        if len(lines) < 3:
-            return []
-        for line in lines[3:]:
-            if not line.strip() or not line.startswith('|'):
-                continue
-            parts = [p.strip() for p in line.split('|')]
-            if len(parts) >= 8:
-                task_id = parts[1]
-                if not task_id or re.match(r'^[:\-\s]+$', task_id):
-                    continue
-                task = {
-                    'id': task_id,
-                    'time': parts[2],
-                    'task': parts[3],
-                    'assigned_to': parts[4],
-                    'status': parts[5],
-                    'tester_status': parts[6],
-                    'report_path': parts[7] if len(parts) > 7 else '',
-                    'recurrence': parts[8] if len(parts) > 8 else 'once',
-                }
-                tasks.append(task)
-        return tasks
-    except Exception as e:
-        logger.error(f'Error reading schedule: {e}')
-        return []
+        return next_run + timedelta(days=days_ahead)
+    if recurrence == "once":
+        return datetime.fromisoformat(params["dt"])
+    raise ValueError(f"Unknown recurrence: {recurrence}")
 
 
-def write_schedule(tasks: list[dict]) -> None:
-    """Write the full task list back to SCHEDULE.md."""
-    header = [
-        '# Task Schedule\n',
-        '\n',
-        '| ID | Scheduled Time | Task Description | Assigned To | Status | Tester Status | Report Path | Recurrence |\n',
-        '|:---|:---|:---|:---|:---|:---|:---|:---|\n'
-    ]
-    lines = header
-    for task in tasks:
-        recurrence = task.get('recurrence', 'once')
-        report = task.get('report_path', '')
-        line = f"| {task['id']} | {task['time']} | {task['task']} | {task['assigned_to']} | {task['status']} | {task['tester_status']} | {report} | {recurrence} |\n"
-        lines.append(line)
-    with open(SCHEDULE_FILE, 'w') as f:
-        f.writelines(lines)
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
-
-def update_task_status(task_id: str, new_status: str, report_path: str | None = None) -> None:
-    tasks = read_schedule()
-    for task in tasks:
-        if task['id'] == task_id:
-            task['status'] = new_status
-            if report_path:
-                task['report_path'] = report_path
-    write_schedule(tasks)
-
-
-def _load_agent_system_prompt(agent_id: str) -> str:
-    """Load agent system prompt from agents.db for scheduled agent tasks."""
-    try:
-        import sqlite3
-        from pathlib import Path as _Path
-        db_path = str(_Path(_MEMORY_DIR) / 'agents.db')
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute('SELECT system_prompt, skills FROM agents WHERE id = ?', (agent_id,)).fetchone()
-        conn.close()
-        if not row:
-            return ''
-        prompt = row['system_prompt'] or ''
-        try:
-            import json
-            import sys
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from agent_skills import build_skills_prompt
-            skills = json.loads(row['skills'] or '[]')
-            skill_section = build_skills_prompt(skills)
-            if skill_section:
-                prompt = prompt + '\n\n' + skill_section
-        except Exception:
-            pass
-        return prompt
-    except Exception as e:
-        logger.warning(f'Failed to load agent system prompt for {agent_id}: {e}')
-        return ''
-
-
-def _build_worker_prompt(task_id: str, task_desc: str, assigned_to: str = 'Worker') -> str:
-    agent_system_prompt = ''
-    agent_label = 'scheduled task worker'
-    if assigned_to and assigned_to.startswith('Agent:'):
-        agent_id = assigned_to[6:].strip().lower()
-        agent_system_prompt = _load_agent_system_prompt(agent_id)
-        if agent_system_prompt:
-            agent_label = f'{agent_id} specialist agent'
-
-    agent_persona_section = ''
-    if agent_system_prompt:
-        agent_persona_section = (
-            f'## Your Expert Persona\n\n'
-            f'{agent_system_prompt}\n\n'
+def add_schedule(
+    chat_id: int,
+    description: str,
+    recurrence: str,
+    params: dict,
+) -> int:
+    """Add a new schedule. Returns the new schedule ID."""
+    import json
+    next_run = _calc_next_run(recurrence, params)
+    now_iso = _now().isoformat()
+    with _connect() as conn:
+        cur = conn.execute(
+            """INSERT INTO schedules (chat_id, description, recurrence, next_run, enabled, created_at)
+               VALUES (?, ?, ?, ?, 1, ?)""",
+            (chat_id, description, json.dumps({"type": recurrence, **params}),
+             next_run.isoformat(), now_iso),
         )
+        conn.commit()
+        return cur.lastrowid
 
-    return (
-        f'TASK ID: {task_id}\n'
-        f'OBJECTIVE: {task_desc}\n\n'
-        f'{agent_persona_section}'
-        f'## Context & Tools\n\n'
-        f'You are a {agent_label}. Complete the objective above autonomously.\n\n'
-        f'### Sending Telegram Messages\n'
-        f'To send a Telegram notification, use:\n'
-        f'```bash\n'
-        f'curl -s -X POST "https://api.telegram.org/bot{BOT_TOKEN}/sendMessage" '
-        f'-H "Content-Type: application/json" '
-        f'-d \'{{"chat_id": {CHAT_ID}, "text": "YOUR_MESSAGE_HERE"}}\'\n'
-        f'```\n\n'
-        f'### Memory & Files\n'
-        f'- Notes and memory files are at: {_MEMORY_DIR}/\n'
-        f'- Key files: USER.md, MEMORY.md\n'
-        f'- You can read any file on the system to find information needed for the task.\n\n'
-        f'### Rules\n'
-        f'- Complete the task, then confirm what you did.\n'
-        f'- If the task says to send a message, you MUST actually send it via the Telegram API.\n'
-        f'- Do NOT just describe what you would do - actually do it.\n'
+
+def list_schedules(chat_id: int) -> list[dict]:
+    """Return all enabled schedules for a chat."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM schedules WHERE chat_id = ? AND enabled = 1 ORDER BY id",
+            (chat_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def remove_schedule(chat_id: int, schedule_id: int) -> bool:
+    """Disable a schedule by ID. Returns True if found and removed."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE schedules SET enabled = 0 WHERE id = ? AND chat_id = ?",
+            (schedule_id, chat_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def _get_due_schedules() -> list[dict]:
+    """Return all enabled schedules whose next_run is now or past."""
+    import json
+    now_iso = _now().isoformat()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM schedules WHERE enabled = 1 AND next_run <= ?",
+            (now_iso,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _advance_schedule(row: dict) -> None:
+    """Update next_run for a recurring schedule, or disable a one-shot."""
+    import json
+    data = json.loads(row["recurrence"])
+    recurrence = data.pop("type")
+    params = data
+
+    if recurrence == "once":
+        with _connect() as conn:
+            conn.execute("UPDATE schedules SET enabled = 0 WHERE id = ?", (row["id"],))
+            conn.commit()
+        return
+
+    next_run = _calc_next_run(recurrence, params)
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE schedules SET next_run = ? WHERE id = ?",
+            (next_run.isoformat(), row["id"]),
+        )
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task execution
+# ---------------------------------------------------------------------------
+
+def _run_task_sync(row: dict, cli_cmd: str, bot_token: str, chat_id_str: str) -> None:
+    """Execute a scheduled task synchronously (called in a thread)."""
+    import json
+    import os
+    import subprocess
+
+    task_id = row["id"]
+    description = row["description"]
+    data = json.loads(row["recurrence"])
+    recurrence_type = data.get("type", "once")
+
+    logger.info("Running scheduled task #%s: %s", task_id, description)
+
+    prompt = (
+        f"SCHEDULED TASK #{task_id}: {description}\n\n"
+        f"Complete this task autonomously. Be concise.\n\n"
+        f"When done, send a brief Telegram summary using:\n"
+        f"curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendMessage' "
+        f"-H 'Content-Type: application/json' "
+        f"-d '{{\"chat_id\": {chat_id_str}, \"text\": \"✅ Task #{task_id} done: <summary>\"}}'  \n\n"
+        f"Do not just describe what you would do — actually do it."
     )
 
-
-def _reschedule_if_recurring(task: dict) -> None:
-    """If a task has a recurrence, add a new pending row with the next run time."""
-    recurrence_str = task.get('recurrence', 'once')
-    recurrence = parse_recurrence(recurrence_str)
-    if not recurrence:
-        return
-
-    now = get_now()
-    next_run = calc_next_run(recurrence, now)
-    if not next_run:
-        return
-
-    next_time_str = next_run.strftime('%Y-%m-%d %H:%M')
-
-    tasks = read_schedule()
-    max_id = 0
-    for t in tasks:
-        try:
-            max_id = max(max_id, int(t['id']))
-        except ValueError:
-            pass
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
 
     try:
-        int(task['id'])
-        new_id = str(max_id + 1).zfill(len(task['id']))
-    except ValueError:
-        new_id = task['id']
-
-    new_task = {
-        'id': new_id,
-        'time': next_time_str,
-        'task': task['task'],
-        'assigned_to': task['assigned_to'],
-        'status': '[ ] Pending',
-        'tester_status': '[ ] Waiting',
-        'report_path': '',
-        'recurrence': recurrence_str,
-    }
-    tasks.append(new_task)
-    write_schedule(tasks)
-
-    logger.info(f"Recurring task '{task['task']}' rescheduled as #{new_task['id']} at {next_time_str}")
-    send_telegram(f"[Scheduler] Recurring task rescheduled as #{new_task['id']} → next run: {next_time_str}")
-
-
-def run_task(task: dict) -> None:
-    task_id = task['id']
-    task_desc = task['task']
-    assigned_to = task.get('assigned_to', 'Worker')
-
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    report_file = os.path.join(REPORTS_DIR, f'TASK_{task_id}.md')
-
-    logger.info(f'Starting task {task_id}: {task_desc}')
-    update_task_status(task_id, '[~] Running')
-    send_telegram(f'[Scheduler] Task #{task_id} started: {task_desc}')
-
-    try:
-        prompt = _build_worker_prompt(task_id, task_desc, assigned_to=assigned_to)
-        env = os.environ.copy()
-        env.pop('CLAUDECODE', None)
-
-        # Use CLI_COMMAND from env (defaults to 'claude')
-        cli_cmd = env.get('CLI_COMMAND', 'claude')
         result = subprocess.run(
-            [cli_cmd, '-p', '--dangerously-skip-permissions', prompt],
+            [cli_cmd, "-p", "--dangerously-skip-permissions", prompt],
             capture_output=True, text=True, env=env,
-            timeout=TASK_TIMEOUT,
+            timeout=_DEFAULT_TIMEOUT,
         )
-
-        with open(report_file, 'w') as f:
-            f.write(f'# Task Report: {task_id}\n')
-            f.write(f'Task: {task_desc}\n\n')
-            f.write(f'Completed at: {get_now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
-            f.write('## Output:\n')
-            f.write(result.stdout)
-            if result.stderr:
-                f.write('\n## Stderr:\n')
-                f.write(result.stderr)
-
-        try:
-            with open(REPORT_DONE_FILE, 'a') as f:
-                f.write(f'## [DONE] {get_now().strftime("%Y-%m-%d %H:%M:%S")}\n')
-                f.write(f'Task: {task_desc}\n')
-                f.write(f'ID: {task_id} | Report: {report_file}\n\n---\n\n')
-        except Exception as e:
-            logger.error(f'Failed to write to done report: {e}')
-
-        worker_failed = (
-            result.returncode != 0
-            or ('error' in result.stderr.lower() if result.stderr else False)
-        )
-
-        if worker_failed:
-            update_task_status(task_id, '[!] Error', report_file)
-            send_telegram(f'[Scheduler] Task #{task_id} FAILED: {task_desc}\nReport: {report_file}')
-            logger.error(f'Task {task_id} worker returned errors.')
-        else:
-            update_task_status(task_id, '[x] Done', report_file)
-            send_telegram(f'[Scheduler] Task #{task_id} completed: {task_desc}')
-            logger.info(f'Task {task_id} completed.')
-
-        _reschedule_if_recurring(task)
-
+        if result.returncode != 0:
+            logger.warning("Task #%s exited %s", task_id, result.returncode)
     except subprocess.TimeoutExpired:
-        logger.error(f'Task {task_id} timed out after {TASK_TIMEOUT}s')
-        update_task_status(task_id, f'[!] Timeout ({TASK_TIMEOUT}s)')
-        send_telegram(f'[Scheduler] Task #{task_id} TIMED OUT after {TASK_TIMEOUT}s: {task_desc}')
-        _reschedule_if_recurring(task)
+        logger.error("Task #%s timed out after %ss", task_id, _DEFAULT_TIMEOUT)
+        _notify(bot_token, chat_id_str,
+                f"⏱ Scheduled task #{task_id} timed out ({_DEFAULT_TIMEOUT}s):\n{description}")
+    except FileNotFoundError:
+        logger.error("CLI command not found: %s", cli_cmd)
+        _notify(bot_token, chat_id_str,
+                f"❌ Scheduled task #{task_id} failed: CLI '{cli_cmd}' not found.")
+
+
+def _notify(bot_token: str, chat_id: str, text: str) -> None:
+    if not bot_token or not chat_id:
+        return
+    try:
+        import httpx
+        httpx.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=10,
+        )
     except Exception as e:
-        logger.error(f'Error executing task {task_id}: {e}')
-        update_task_status(task_id, f'[!] Error: {str(e)}')
-        send_telegram(f'[Scheduler] Task #{task_id} ERROR: {str(e)}')
-        _reschedule_if_recurring(task)
+        logger.warning("Telegram notify failed: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Async scheduler loop
+# ---------------------------------------------------------------------------
+
+_runner_ref = None   # set by init()
+_bot_token: str = ""
+_default_chat_id: str = ""
+
+
+def init(runner, bot_token: str, default_chat_id: str) -> None:
+    global _runner_ref, _bot_token, _default_chat_id
+    _runner_ref = runner
+    _bot_token = bot_token
+    _default_chat_id = default_chat_id
+    _init_db()
 
 
 async def scheduler_loop() -> None:
-    logger.info('Scheduler loop started.')
+    """Main loop — checks for due tasks every _CHECK_INTERVAL seconds."""
+    logger.info("Scheduler started (interval: %ss)", _CHECK_INTERVAL)
     while True:
         try:
-            tasks = await asyncio.to_thread(read_schedule)
-            now = get_now()
-            for task in tasks:
-                if '[ ] Pending' in task['status']:
-                    try:
-                        scheduled_time_str = task['time']
-                        scheduled_time = datetime.strptime(scheduled_time_str, '%Y-%m-%d %H:%M')
-                        scheduled_time = scheduled_time.replace(tzinfo=_TZ)
-                        same_day = scheduled_time.date() == now.date()
-                        if now >= scheduled_time and same_day:
-                            await asyncio.to_thread(run_task, task)
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.error(f'Error in scheduler loop: {e}')
-        await asyncio.sleep(30)
-
-
-if __name__ == "__main__":
-    asyncio.run(scheduler_loop())
+            due = await asyncio.to_thread(_get_due_schedules)
+            for row in due:
+                # Advance/disable before running so a crash doesn't double-fire
+                await asyncio.to_thread(_advance_schedule, row)
+                chat_id_str = str(row["chat_id"]) or _default_chat_id
+                cli_cmd = (
+                    getattr(_runner_ref, "cli_command", None)
+                    or __import__("os").environ.get("CLI_COMMAND", "claude")
+                )
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        _run_task_sync, row, cli_cmd, _bot_token, chat_id_str
+                    )
+                )
+        except Exception:
+            logger.exception("Scheduler loop error")
+        await asyncio.sleep(_CHECK_INTERVAL)

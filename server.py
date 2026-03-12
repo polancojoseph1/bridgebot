@@ -227,7 +227,9 @@ async def _init_memory_background() -> None:
 async def _start_scheduler_background() -> None:
     """Start scheduler after startup has fully completed."""
     await asyncio.sleep(0.2)
-    await scheduler.scheduler_loop()
+    if scheduler:
+        scheduler.init(runner, TELEGRAM_BOT_TOKEN, str(next(iter(ALLOWED_USER_IDS), "")))
+        await scheduler.scheduler_loop()
 
 
 async def _notify_startup_background() -> None:
@@ -486,7 +488,11 @@ async def lifespan(application: FastAPI):
         ("agent",     "Manage specialist agents: list/create/talk/fix/feedback"),
         ("orch",      "Break task into parallel agents, synthesize results"),
         
-        # Research & Intel
+        # Scheduling
+        ("schedule",   "Schedule a recurring or one-time task"),
+        ("schedules",  "List active schedules"),
+        ("unschedule", "Cancel a schedule by ID"),
+        
         # Memory & Tasks
         ("remember",  "Save something to memory"),
         ("memory",    "Memory stats & re-index files"),
@@ -1298,6 +1304,81 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             runner.chrome_enabled = not runner.chrome_enabled
         status = "ON" if getattr(runner, 'chrome_enabled', False) else "OFF"
         await send_message(chat_id, f"\U0001f310 Chrome browser integration: {status}")
+
+    elif cmd == "/schedule":
+        arg = text[len("/schedule"):].strip()
+        if not arg or not scheduler:
+            if not scheduler:
+                await send_message(chat_id, "Scheduler is not available.")
+            else:
+                await send_message(
+                    chat_id,
+                    "Usage: /schedule <recurrence> <task>\n\n"
+                    "Examples:\n"
+                    "  /schedule every day 9am summarize AI news\n"
+                    "  /schedule every 2h check for new emails\n"
+                    "  /schedule weekly monday 8am send weekly report\n"
+                    "  /schedule once 2026-04-01 10:00 send April report\n\n"
+                    "Use /schedules to list and /unschedule <id> to cancel."
+                )
+            return
+        # Split recurrence from task description
+        # Try to find where the recurrence ends and description begins
+        parsed = None
+        task_desc = ""
+        words = arg.split()
+        for split in range(len(words), 0, -1):
+            candidate = " ".join(words[:split])
+            result = scheduler.parse_recurrence(candidate)
+            if result:
+                parsed = result
+                task_desc = " ".join(words[split:])
+                break
+        if not parsed or not task_desc:
+            await send_message(
+                chat_id,
+                "Couldn't parse that schedule. Try:\n"
+                "  /schedule every day 9am <task description>\n"
+                "  /schedule every 2h <task description>\n"
+                "  /schedule weekly monday 9am <task description>"
+            )
+            return
+        recurrence_type, params = parsed
+        sched_id = scheduler.add_schedule(chat_id, task_desc, recurrence_type, params)
+        label = scheduler.recurrence_label(recurrence_type, params)
+        await send_message(chat_id, f"\u23f0 Schedule #{sched_id} set ({label}):\n{task_desc}")
+
+    elif cmd == "/schedules":
+        if not scheduler:
+            await send_message(chat_id, "Scheduler is not available.")
+            return
+        import json
+        rows = scheduler.list_schedules(chat_id)
+        if not rows:
+            await send_message(chat_id, "No active schedules. Use /schedule to add one.")
+            return
+        lines = ["<b>Active Schedules:</b>\n"]
+        for r in rows:
+            data = json.loads(r["recurrence"])
+            rtype = data.pop("type")
+            label = scheduler.recurrence_label(rtype, data)
+            lines.append(f"<b>#{r['id']}</b> {label}\n  {r['description']}")
+        lines.append("\nUse /unschedule &lt;id&gt; to cancel.")
+        await send_message(chat_id, "\n".join(lines), parse_mode="HTML")
+
+    elif cmd == "/unschedule":
+        if not scheduler:
+            await send_message(chat_id, "Scheduler is not available.")
+            return
+        arg = text[len("/unschedule"):].strip()
+        if not arg.isdigit():
+            await send_message(chat_id, "Usage: /unschedule <id>\nGet IDs from /schedules")
+            return
+        removed = scheduler.remove_schedule(chat_id, int(arg))
+        if removed:
+            await send_message(chat_id, f"\u2705 Schedule #{arg} cancelled.")
+        else:
+            await send_message(chat_id, f"Schedule #{arg} not found.")
 
     elif cmd == "/new":
         inst = instances.get_active_for(owner_id)
