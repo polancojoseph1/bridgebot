@@ -43,7 +43,7 @@ PLIST_TEMPLATE = """\
         <key>HOME</key>
         <string>{home}</string>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>{homebrew_prefix}/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>PYTHONPATH</key>
         <string>{project_dir}/.venv/lib/python{pyver}/site-packages</string>
     </dict>
@@ -95,6 +95,17 @@ def _python_version() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
+def _homebrew_prefix() -> str:
+    """Return Homebrew prefix (e.g. /opt/homebrew on Apple Silicon, /usr/local on Intel).
+    Returns empty string on non-macOS systems."""
+    if sys.platform != "darwin":
+        return ""
+    result = subprocess.run(["brew", "--prefix"], capture_output=True, text=True)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return "/opt/homebrew"  # sensible fallback
+
+
 def _venv_python(project_dir: Path) -> str:
     """Return the venv Python path for the current OS."""
     if sys.platform == "win32":
@@ -127,6 +138,7 @@ def _install_macos(name: str, port: str, project_dir: Path) -> None:
         label=label, python=python, port=port,
         project_dir=str(project_dir), home=home, pyver=pyver,
         log=str(log_path), err=str(err_path),
+        homebrew_prefix=_homebrew_prefix(),
     ))
     print(f"Wrote: {plist_path}")
 

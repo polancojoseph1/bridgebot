@@ -92,7 +92,7 @@ instances = InstanceManager()
 # -- Session store (crash recovery) ------------------------------------------
 import session_store as _ss_mod
 _session_store = _ss_mod.SessionStore()
-_SHUTDOWN_FLAG = os.path.expanduser(f"~/.jefe/pids/{CLI_RUNNER}.shutdown_clean")
+_SHUTDOWN_FLAG = os.path.join(os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.tg-cli-bridge")), "pids", f"{CLI_RUNNER}.shutdown_clean")
 
 # -- Message types -----------------------------------------------------------
 
@@ -773,7 +773,7 @@ async def process_update(body: dict) -> None:
     # Document upload -- save to uploads folder inside memory dir
     if document:
         file_id = document["file_id"]
-        file_name = document.get("file_name", f"file_{file_id[:8]}")
+        file_name = os.path.basename(document.get("file_name", f"file_{file_id[:8]}"))
         save_dir = os.path.join(MEMORY_DIR, "uploads")
         dest_path = os.path.join(save_dir, file_name)
         health.record_message()
@@ -1467,6 +1467,10 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
     elif cmd == "/help":
         voice_status = "ON" if _voice_reply_mode else "OFF"
         chrome_status = "ON" if getattr(runner, 'chrome_enabled', False) else "OFF"
+        import shutil as _shutil
+        from config import MEMORY_ENABLED
+        memory_status = "ON" if MEMORY_ENABLED else "OFF"
+        ffmpeg_status = "available" if _shutil.which("ffmpeg") else "not installed"
         from call_handler import get_manager
         call_mgr = get_manager()
         call_status = call_mgr.state if (call_mgr and call_mgr.is_active) else "off"
@@ -1519,7 +1523,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/kill \u2014 Force-kill all Claude processes across all instances\n"
             f"/chrome \u2014 Toggle Chrome browser [{chrome_status}]\n"
             f"/model sonnet|opus \u2014 Switch model for active instance [{(active.model.split('-')[1] if '-' in active.model else active.model).capitalize()}]\n\n"
-            "**\U0001f9e0 Memory & Tasks**\n"
+            f"**\U0001f9e0 Memory & Tasks** [memory: {memory_status} | voice TTS: {ffmpeg_status}]\n"
             "/remember <text> \u2014 Save to memory\n"
             "/task \u2014 View/manage task list\n"
             "/memory \u2014 Memory stats & re-index\n\n"

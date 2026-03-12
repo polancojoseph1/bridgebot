@@ -27,11 +27,11 @@ async def close_client() -> None:
 
 
 def _convert_markdown_tables(text: str) -> str:
-    """Convert markdown pipe tables for Telegram.
+    """Convert markdown pipe tables to numbered lists for Telegram.
 
-    <= 4 columns: rendered as a monospace <pre> table.
-    >  4 columns: rendered as a numbered list (one entry per data row)
-                  since wide tables wrap badly on mobile.
+    Rule: tables are ALWAYS rendered as numbered lists (one entry per data row,
+    headers used as bold labels). <pre> table blocks are never used because they
+    wrap and look broken on mobile regardless of column count.
     """
     lines = text.split("\n")
     result = []
@@ -58,40 +58,18 @@ def _convert_markdown_tables(text: str) -> str:
                 rows.append(cells)
             if not rows:
                 continue
-            num_cols = max(len(r) for r in rows)
             headers = rows[0]
             data_rows = rows[1:]
-
-            if num_cols > 4:
-                # Wide table: render as numbered list entries
-                rendered = []
-                for idx, row in enumerate(data_rows, 1):
-                    lines_out = [f"<b>{idx}.</b>"]
-                    for j, header in enumerate(headers):
-                        val = row[j] if j < len(row) else ""
-                        if val:
-                            lines_out.append(f"  <b>{header}:</b> {val}")
-                    rendered.append("\n".join(lines_out))
-                result.append("\n\n".join(rendered))
-            else:
-                # Narrow table: render as monospace <pre> block
-                widths = [0] * num_cols
-                for row in rows:
-                    for j in range(min(len(row), num_cols)):
-                        widths[j] = max(widths[j], len(row[j]))
-                separators = 3 * (num_cols - 1)
-                def _trunc(val, w):
-                    return val if len(val) <= w else val[:w - 1] + "\u2026"
-                rendered = []
-                for k, row in enumerate(rows):
-                    padded = [
-                        _trunc(row[j] if j < len(row) else "", widths[j]).ljust(widths[j])
-                        for j in range(num_cols)
-                    ]
-                    rendered.append(" \u2502 ".join(padded).rstrip())
-                    if k == 0:
-                        rendered.append("\u2500" * (sum(widths) + separators))
-                result.append("<pre>" + "\n".join(rendered) + "</pre>")
+            # Always render as numbered list
+            rendered = []
+            for idx, row in enumerate(data_rows, 1):
+                lines_out = [f"<b>{idx}.</b>"]
+                for j, header in enumerate(headers):
+                    val = row[j] if j < len(row) else ""
+                    if val:
+                        lines_out.append(f"  <b>{header}:</b> {val}")
+                rendered.append("\n".join(lines_out))
+            result.append("\n\n".join(rendered))
         else:
             result.append(line)
             i += 1
@@ -103,7 +81,7 @@ def markdown_to_telegram_html(text: str) -> str:
     # Escape HTML entities first so Claude's output can't inject tags
     text = html.escape(text)
 
-    # Convert markdown tables to <pre> monospace blocks (Telegram has no table support)
+    # Convert markdown tables to numbered lists (Telegram has no table support — always use lists)
     text = _convert_markdown_tables(text)
 
     # Code blocks (```lang\n...\n```) → <pre>...</pre>

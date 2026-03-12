@@ -67,6 +67,10 @@ MEMORY_DIR: str = os.environ.get("MEMORY_DIR", os.path.expanduser("~/memories"))
 MEMORY_COLLECTION: str = os.environ.get("MEMORY_COLLECTION", "telegram_bridge")
 MEMORY_TOP_K: int = int(os.environ.get("MEMORY_TOP_K", "5"))
 
+# Data directory for runtime files (session DB, logs, pid files)
+# Override with TG_BRIDGE_DATA_DIR env var. Defaults to ~/.tg-cli-bridge
+DATA_DIR: str = os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.tg-cli-bridge"))
+
 # Your first name — used to personalize the bot's greetings and memory context
 USER_NAME: str = os.environ.get("USER_NAME", "")
 

@@ -1,0 +1,58 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install core dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install only the packages needed for tests (skip heavy ML deps)
+          pip install httpx fastapi uvicorn python-dotenv pytest pytest-asyncio
+
+      - name: Create minimal .env for tests
+        run: |
+          cat > .env << 'EOF'
+          TELEGRAM_BOT_TOKEN=1234567890:AAtesttoken
+          ALLOWED_USER_ID=12345678
+          CLI_RUNNER=generic
+          CLI_COMMAND=echo
+          EOF
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linting tools
+        run: pip install ruff
+
+      - name: Lint with ruff
+        run: ruff check . --exclude .venv --select E,F,W --ignore E501

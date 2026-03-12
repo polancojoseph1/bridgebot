@@ -19,7 +19,11 @@ from pathlib import Path
 
 logger = logging.getLogger("bridge.session_store")
 
-DEFAULT_DB_PATH = os.path.expanduser("~/.jefe/session_store.db")
+def _default_db_path() -> str:
+    data_dir = os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.tg-cli-bridge"))
+    return os.path.join(data_dir, "session_store.db")
+
+DEFAULT_DB_PATH = _default_db_path()
 
 
 class SessionStore:

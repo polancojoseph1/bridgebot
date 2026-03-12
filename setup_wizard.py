@@ -135,6 +135,48 @@ def detect_clis() -> dict[str, str | None]:
     }
 
 
+def check_system_deps() -> list[tuple[str, bool, str]]:
+    """Check for optional system dependencies.
+
+    Returns list of (name, found, install_hint) tuples.
+    """
+    checks = [
+        ("node / npm",  shutil.which("npm") is not None,
+         "Install Node.js from https://nodejs.org (required for all AI CLIs)"),
+        ("ffmpeg",      shutil.which("ffmpeg") is not None,
+         "Install ffmpeg: brew install ffmpeg  (macOS) | apt install ffmpeg  (Linux)\n"
+         "     Required for voice message support."),
+        ("tailscale",   shutil.which("tailscale") is not None,
+         "Install Tailscale from https://tailscale.com  (recommended for stable webhook URLs)"),
+        ("cloudflared", shutil.which("cloudflared") is not None,
+         "Install cloudflared from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/\n"
+         "     Optional: alternative tunnel tool to Tailscale."),
+    ]
+    return checks
+
+
+def print_system_deps():
+    """Print a system dependency table — called from the main wizard menu."""
+    checks = check_system_deps()
+    print()
+    print("=" * 46)
+    print("  System Dependency Check")
+    print("=" * 46)
+    print()
+    all_ok = True
+    for name, found, hint in checks:
+        status = "OK" if found else "MISSING"
+        icon = "" if found else "!"
+        print(f"  [{status:^7}] {icon} {name}")
+        if not found:
+            all_ok = False
+            print(f"           {hint}")
+            print()
+    if all_ok:
+        print("  All optional dependencies found.")
+    print()
+
+
 def save_value(key: str, value: str):
     """Write a single key=value to .env (creates file if needed)."""
     set_key(str(ENV_PATH), key, value)
@@ -1224,6 +1266,8 @@ def _main():
             config_memory(existing)
         elif choice == "8":
             config_prompt(existing)
+        elif choice == "9":
+            print_system_deps()
         elif choice == "r":
             if ready:
                 run_bot(existing)
@@ -1243,7 +1287,7 @@ def _main():
             print_summary(existing)
             break
         else:
-            print("\n    Pick a number 1-8, r to run, or q to quit.\n")
+            print("\n    Pick a number 1-9, r to run, or q to quit.\n")
 
 
 if __name__ == "__main__":

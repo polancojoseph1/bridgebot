@@ -18,6 +18,6 @@ COPY . .
 # Create memory directory
 RUN mkdir -p /memories
 
-EXPOSE 8585
+EXPOSE 8588
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8585"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8588"]
