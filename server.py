@@ -62,6 +62,15 @@ try:
 except ImportError:
     task_orchestrator = None  # type: ignore
 
+try:
+    import trigger_registry
+    import trigger_worker
+    _triggers_available = True
+except ImportError:
+    trigger_registry = None  # type: ignore
+    trigger_worker = None    # type: ignore
+    _triggers_available = False
+
 
 # Initialize the CLI runner
 runner = create_runner()
@@ -549,6 +558,10 @@ async def lifespan(application: FastAPI):
     # Chroma initialization can stall startup and block webhook responsiveness.
     logger.info("Telegram-Claude bridge is ready")
     asyncio.create_task(_start_scheduler_background())
+    if _triggers_available:
+        trigger_registry.init_db()
+        trigger_worker.init(instances, send_message)
+        logger.info("Trigger system ready")
     asyncio.create_task(_notify_startup_background())
     if _crashed:
         asyncio.create_task(_restore_sessions_after_crash())
@@ -874,6 +887,55 @@ async def webhook(request: Request):
     body = await request.json()
     await process_update(body)
     return JSONResponse({"ok": True})
+
+
+@app.post("/triggers/webhook/{trigger_id}")
+async def trigger_webhook(trigger_id: str, request: Request):
+    """HTTP endpoint for external event triggers (GitHub, custom webhooks, etc.)."""
+    import hashlib
+    import hmac
+
+    if not _triggers_available:
+        return JSONResponse({"ok": False, "error": "triggers not available"}, status_code=503)
+
+    trigger = trigger_registry.get_trigger(trigger_id)
+    if not trigger:
+        return JSONResponse({"ok": False, "error": "trigger not found"}, status_code=404)
+    if not trigger.enabled:
+        return JSONResponse({"ok": False, "error": "trigger disabled"}, status_code=200)
+
+    raw_body = await request.body()
+
+    # Validate HMAC secret if configured (GitHub-compatible)
+    secret = trigger.config.get("secret", "")
+    if secret:
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig_header, expected):
+            logger.warning("Trigger '%s': invalid signature", trigger_id)
+            return JSONResponse({"ok": False, "error": "invalid signature"}, status_code=401)
+
+    # Filter by GitHub event type if configured
+    event_filter = trigger.config.get("event", "")
+    if event_filter:
+        gh_event = request.headers.get("X-GitHub-Event", "")
+        if gh_event and gh_event != event_filter:
+            return JSONResponse({"ok": True, "skipped": f"event {gh_event!r} != {event_filter!r}"})
+
+    # Filter by branch if configured (GitHub push payload: ref = "refs/heads/main")
+    branch_filter = trigger.config.get("branch", "")
+    if branch_filter:
+        try:
+            payload = json.loads(raw_body)
+            ref = payload.get("ref", "")
+            pushed_branch = ref.replace("refs/heads/", "")
+            if pushed_branch and pushed_branch != branch_filter:
+                return JSONResponse({"ok": True, "skipped": f"branch {pushed_branch!r} != {branch_filter!r}"})
+        except Exception:
+            pass
+
+    fired = await trigger_worker.fire(trigger_id)
+    return JSONResponse({"ok": fired})
 
 
 def _resolve_target_instance(text: str, user_id: int = 0):
@@ -1597,6 +1659,15 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/agent fix <name> <rule> \u2014 Patch a rule into agent's prompt  _→ /agent fix News Hound always cite sources_\n"
             "/agent feedback <name> <issue> \u2014 Record feedback & auto-improve  _→ /agent feedback News Hound missed the SEC angle_\n"
             "/agent delete <name> \u2014 Delete an agent\n\n"
+            "**⚡ Triggers (Event-Driven Agents)**\n"
+            "/trigger list — list all triggers\n"
+            "/trigger create <id> <agent> manual — fire manually with /trigger run\n"
+            "/trigger create <id> <agent> webhook [event=push] [branch=main] — external HTTP trigger\n"
+            "/trigger create <id> <agent> file_change path=/path — fire on file change\n"
+            "/trigger run <id> — fire any trigger manually\n"
+            "/trigger info <id> — show trigger details\n"
+            "/trigger enable|disable|delete <id>\n"
+            "_Agents are never removed when a trigger is deleted._\n\n"
             "**\U0001f9e0 Skills**\n"
             "/skill list \u2014 Show all skill packs\n"
             "/skill show <id> \u2014 See a skill's full prompt\n"
@@ -2627,6 +2698,203 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             f"Session lasted {duration} min. Back to your Claude.",
             parse_mode="HTML",
         )
+
+    elif cmd == "/trigger":
+        if not _triggers_available:
+            await send_message(chat_id, "Trigger system is not available.")
+            return
+
+        parts = text.split(maxsplit=3)
+        sub = parts[1].lower() if len(parts) > 1 else ""
+
+        # /trigger list [agent]
+        if sub in ("list", "") or sub == "":
+            agent_filter = parts[2] if len(parts) > 2 else None
+            triggers = trigger_registry.list_triggers(agent_id=agent_filter)
+            if not triggers:
+                msg = "No triggers configured."
+                if agent_filter:
+                    msg += f"\nNo triggers found for agent '{agent_filter}'."
+                msg += "\n\nCreate one with:\n`/trigger create <id> <agent> webhook`\n`/trigger create <id> <agent> manual`"
+                await send_message(chat_id, msg, format_markdown=True)
+                return
+            lines = [f"**Triggers ({len(triggers)}):**\n"]
+            for t in triggers:
+                status_icon = "✅" if t.enabled else "⏸"
+                last = f"last fired {int(time.time() - t.last_fired)}s ago" if t.last_fired else "never fired"
+                task_preview = (t.task_override[:60] + "…") if len(t.task_override) > 60 else (t.task_override or "_agent default task_")
+                lines.append(
+                    f"{status_icon} **{t.id}** [{t.trigger_type}]\n"
+                    f"  Agent: `{t.agent_id}` | {last}\n"
+                    f"  Task: {task_preview}"
+                )
+            await send_message(chat_id, "\n\n".join(lines), format_markdown=True)
+
+        # /trigger run <id>
+        elif sub == "run":
+            if len(parts) < 3:
+                await send_message(chat_id, "Usage: `/trigger run <id>`", format_markdown=True)
+                return
+            trigger_id = parts[2]
+            trigger = trigger_registry.get_trigger(trigger_id)
+            if not trigger:
+                await send_message(chat_id, f"Trigger `{trigger_id}` not found.", format_markdown=True)
+                return
+            # Temporarily set chat_id to current chat so reply comes here
+            original_chat = trigger.chat_id
+            if original_chat == 0:
+                trigger_registry.set_enabled(trigger_id, trigger.enabled)  # no-op to ensure row exists
+            fired = await trigger_worker.fire(trigger_id)
+            if not fired:
+                await send_message(chat_id, f"Failed to fire `{trigger_id}`. Is the agent configured?", format_markdown=True)
+
+        # /trigger info <id>
+        elif sub == "info":
+            if len(parts) < 3:
+                await send_message(chat_id, "Usage: `/trigger info <id>`", format_markdown=True)
+                return
+            t = trigger_registry.get_trigger(parts[2])
+            if not t:
+                await send_message(chat_id, f"Trigger `{parts[2]}` not found.", format_markdown=True)
+                return
+            last_str = f"{int(time.time() - t.last_fired)}s ago" if t.last_fired else "never"
+            config_str = json.dumps(t.config, indent=2) if t.config else "none"
+            await send_message(
+                chat_id,
+                f"**Trigger: {t.id}**\n"
+                f"Type: `{t.trigger_type}`\n"
+                f"Agent: `{t.agent_id}`\n"
+                f"Enabled: {'yes' if t.enabled else 'no'}\n"
+                f"Last fired: {last_str}\n"
+                f"Task override: {t.task_override or '_none (uses agent default)_'}\n"
+                f"Config: ```\n{config_str}\n```",
+                format_markdown=True,
+            )
+
+        # /trigger enable <id>
+        elif sub == "enable":
+            if len(parts) < 3:
+                await send_message(chat_id, "Usage: `/trigger enable <id>`", format_markdown=True)
+                return
+            ok = trigger_registry.set_enabled(parts[2], True)
+            await send_message(chat_id, f"✅ Trigger `{parts[2]}` enabled." if ok else f"Trigger `{parts[2]}` not found.", format_markdown=True)
+
+        # /trigger disable <id>
+        elif sub == "disable":
+            if len(parts) < 3:
+                await send_message(chat_id, "Usage: `/trigger disable <id>`", format_markdown=True)
+                return
+            ok = trigger_registry.set_enabled(parts[2], False)
+            await send_message(chat_id, f"⏸ Trigger `{parts[2]}` disabled." if ok else f"Trigger `{parts[2]}` not found.", format_markdown=True)
+
+        # /trigger delete <id>
+        elif sub == "delete":
+            if len(parts) < 3:
+                await send_message(chat_id, "Usage: `/trigger delete <id>`", format_markdown=True)
+                return
+            deleted = trigger_registry.delete_trigger(parts[2])
+            if deleted:
+                await send_message(chat_id, f"🗑 Trigger `{parts[2]}` deleted. Agent is untouched.", format_markdown=True)
+            else:
+                await send_message(chat_id, f"Trigger `{parts[2]}` not found.", format_markdown=True)
+
+        # /trigger create <id> <agent> <type> [options...]
+        elif sub == "create":
+            # parts[0]=/trigger  parts[1]=create  parts[2]=<id> <agent> <type> [opts]
+            # Re-split the full text for create since we need more args
+            create_parts = text.split(maxsplit=5)
+            # /trigger create <id> <agent> <type> [options]
+            #    [0]      [1]    [2]  [3]    [4]    [5]
+            if len(create_parts) < 5:
+                await send_message(
+                    chat_id,
+                    "Usage:\n"
+                    "`/trigger create <id> <agent> manual`\n"
+                    "`/trigger create <id> <agent> webhook [event=push] [branch=main] [secret=mysecret]`\n"
+                    "`/trigger create <id> <agent> file_change path=/path/to/watch`\n\n"
+                    "_Example: `/trigger create security-on-push coding webhook event=push branch=main`_",
+                    format_markdown=True,
+                )
+                return
+
+            trigger_id = create_parts[2]
+            agent_id_arg = create_parts[3]
+            trigger_type = create_parts[4].lower()
+            options_str = create_parts[5] if len(create_parts) > 5 else ""
+
+            # Validate agent exists
+            target_agent = resolve_agent(agent_id_arg)
+            if not target_agent:
+                await send_message(chat_id, f"Agent `{agent_id_arg}` not found. Use `/agent list` to see agents.", format_markdown=True)
+                return
+
+            if trigger_type not in ("manual", "webhook", "file_change"):
+                await send_message(chat_id, f"Unknown trigger type `{trigger_type}`. Use: `manual`, `webhook`, `file_change`.", format_markdown=True)
+                return
+
+            # Parse key=value options
+            config: dict = {}
+            task_override = ""
+            for token in options_str.split():
+                if "=" in token:
+                    k, _, v = token.partition("=")
+                    if k == "task":
+                        task_override = v.replace("_", " ")
+                    else:
+                        config[k] = v
+
+            try:
+                t = trigger_registry.create_trigger(
+                    trigger_id=trigger_id,
+                    agent_id=target_agent.id,
+                    trigger_type=trigger_type,
+                    config=config,
+                    task_override=task_override,
+                    chat_id=chat_id,
+                )
+            except ValueError as e:
+                await send_message(chat_id, f"❌ {e}", format_markdown=True)
+                return
+
+            # Build response
+            reply_lines = [f"✅ Trigger **{t.id}** created!\n"]
+            reply_lines.append(f"Type: `{t.trigger_type}` → Agent: `{target_agent.name}`")
+            if t.task_override:
+                reply_lines.append(f"Task: _{t.task_override}_")
+            else:
+                reply_lines.append("Task: _agent's default task_")
+
+            if trigger_type == "webhook":
+                # Build webhook URL from WEBHOOK_URL config
+                base_url = WEBHOOK_URL.rstrip("/")
+                if base_url.endswith("/webhook"):
+                    base_url = base_url[:-len("/webhook")]
+                webhook_url = f"{base_url}/triggers/webhook/{t.id}"
+                reply_lines.append(f"\n**Webhook URL:**\n`{webhook_url}`")
+                if config.get("event"):
+                    reply_lines.append(f"Fires on: `{config['event']}` events" + (f" (branch: `{config.get('branch', 'any')}`)" if config.get("branch") else ""))
+                reply_lines.append("\n_For GitHub: add this URL in repo Settings → Webhooks_")
+            elif trigger_type == "file_change":
+                reply_lines.append(f"Watching: `{config.get('path', 'not set')}`")
+                reply_lines.append("_(Note: file_change triggers require the server to be restarted to begin watching)_")
+            elif trigger_type == "manual":
+                reply_lines.append(f"\nFire it with: `/trigger run {t.id}`")
+
+            await send_message(chat_id, "\n".join(reply_lines), format_markdown=True)
+
+        else:
+            await send_message(
+                chat_id,
+                "**Trigger commands:**\n"
+                "`/trigger list` — list all triggers\n"
+                "`/trigger create <id> <agent> <type>` — create a trigger\n"
+                "`/trigger run <id>` — fire a trigger manually\n"
+                "`/trigger info <id>` — show trigger details\n"
+                "`/trigger enable <id>` / `/trigger disable <id>`\n"
+                "`/trigger delete <id>` — delete trigger (agent stays)\n\n"
+                "Types: `manual`, `webhook`, `file_change`",
+                format_markdown=True,
+            )
 
     else:
         # Unknown command — forward to active runner as a regular message.
