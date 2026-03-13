@@ -22,7 +22,8 @@ import urllib.request
 from pathlib import Path
 
 # ── Config ───────────────────────────────────────────────────────────────────
-POLL_INTERVAL = 5  # seconds
+POLL_INTERVAL  = 5    # seconds between polls
+COOLDOWN_SECS  = 300  # don't re-fire the same trigger within 5 minutes
 DB_PATH       = os.path.expanduser("~/Desktop/Jefe/agents.db")
 STATE_FILE    = os.path.expanduser("~/.jefe/poller_state.json")
 SERVER_URL    = "http://localhost:8585"  # Claude runner
@@ -159,13 +160,22 @@ def poll_once(state: dict) -> bool:
             changed = True
 
         elif current_hash != last_hash:
-            log.info(
-                "New commit on '%s' [%s/%s]: %s → %s",
-                tid, repo, branch, last_hash[:8], current_hash[:8],
-            )
-            if fire_trigger(tid, branch, current_hash):
+            cooldown_key = f"{key}:last_fired"
+            last_fired = state.get(cooldown_key, 0)
+            if time.time() - last_fired < COOLDOWN_SECS:
+                # Update hash silently — commit is noted but report already queued
+                log.info("Cooldown active for '%s', skipping fire (hash %s)", tid, current_hash[:8])
                 state[key] = current_hash
                 changed = True
+            else:
+                log.info(
+                    "New commit on '%s' [%s/%s]: %s → %s",
+                    tid, repo, branch, last_hash[:8], current_hash[:8],
+                )
+                if fire_trigger(tid, branch, current_hash):
+                    state[key] = current_hash
+                    state[cooldown_key] = time.time()
+                    changed = True
 
     return changed
 

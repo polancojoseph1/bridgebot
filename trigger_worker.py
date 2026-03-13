@@ -62,34 +62,20 @@ async def fire(trigger_id: str) -> bool:
     record_fired(trigger_id)
     logger.info("Firing trigger '%s' → agent '%s' | task: %s", trigger_id, agent.id, task[:80])
 
-    await _send_fn(
-        chat_id,
-        f"⚡ **{agent.name}** [TRIGGER: {trigger_id}] — starting\n_{task[:150]}_",
-        format_markdown=True,
-    )
-
     asyncio.ensure_future(_run_agent(trigger_id, agent.id, agent.name, task, chat_id))
     return True
 
 
 async def _run_agent(trigger_id: str, agent_id: str, agent_name: str, task: str, chat_id: int) -> None:
-    """Run the agent task and notify when done."""
+    """Run the agent task silently — no start/finish notifications, just the output."""
     from agent_manager import assign_task
 
-    started = time.time()
     try:
         await assign_task(agent_id, task, chat_id, _instance_manager, _send_fn)
-        elapsed = round(time.time() - started)
-        await _send_fn(
-            chat_id,
-            f"✅ **{agent_name}** [TRIGGER: {trigger_id}] finished in {elapsed}s.",
-            format_markdown=True,
-        )
     except Exception as e:
-        elapsed = round(time.time() - started)
         logger.error("Trigger '%s' agent run failed: %s", trigger_id, e)
         await _send_fn(
             chat_id,
-            f"❌ **{agent_name}** [TRIGGER: {trigger_id}] failed after {elapsed}s: {e}",
+            f"❌ **{agent_name}** [TRIGGER: {trigger_id}] failed: {e}",
             format_markdown=True,
         )
