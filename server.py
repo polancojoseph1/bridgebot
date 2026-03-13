@@ -1413,39 +1413,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
     # owner_id=0 means primary user pool; non-zero means that user's own pool
     owner_id = 0 if user_id == ALLOWED_USER_ID else user_id
 
-    if cmd == "/start":
-        await send_message(
-            chat_id,
-            "Welcome to the Telegram-Claude Bridge!\n\n"
-            "Send me any message and I'll forward it to Claude Code "
-            "running on your local machine. Claude remembers your "
-            "conversation until you start a new one.\n\n"
-            "Messages sent while Claude is busy are queued (up to 10) "
-            "and processed in order.\n\n"
-            "You can also send voice notes! I'll transcribe them "
-            "and reply with both text and voice.\n\n"
-            "Commands:\n"
-            "/imagine &lt;prompt&gt; \u2014 Generate an image\n"
-            "/screenshot &lt;url&gt; \u2014 Screenshot a URL\n"
-            "/browse &lt;url&gt; \u2014 Extract text from a URL\n"
-            "/stop \u2014 Stop current task & clear queue\n"
-            "/kill \u2014 Force-kill all Claude processes\n"
-            "/new \u2014 Start a new conversation\n"
-            "/voice \u2014 Toggle voice replies for text messages\n"
-            "/chrome \u2014 Toggle Chrome browser integration\n"
-            "/remember &lt;text&gt; \u2014 Save to memory\n"
-            "/task \u2014 View/manage task list (add, done)\n"
-            "/memory \u2014 Memory stats &amp; re-index\n"
-            "/server \u2014 Restart the bridge server\n"
-            "**\U0001f4bb System**\n"
-            "/status \u2014 Server status\n"
-            "/help \u2014 Show this help",
-        )
-
-    elif cmd == "/getid":
-        await send_message(chat_id, f"Chat ID: <code>{chat_id}</code>", parse_mode="HTML")
-
-    elif cmd == "/stop":
+    if cmd == "/stop":
         inst = instances.get_active_for(owner_id)
         # Clear this instance's queue
         cleared = inst.clear_queue()
@@ -1481,18 +1449,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         await runner.kill_all()
         await send_message(chat_id, "\U0001f480 Killed all Claude processes. All queues cleared.")
 
-    elif cmd == "/voice":
-        global _voice_reply_mode
-        _voice_reply_mode = not _voice_reply_mode
-        status = "ON" if _voice_reply_mode else "OFF"
-        await send_message(chat_id, f"\U0001f50a Voice replies for text messages: {status}")
-
-    elif cmd == "/chrome":
-        if hasattr(runner, 'chrome_enabled'):
-            runner.chrome_enabled = not runner.chrome_enabled
-        status = "ON" if getattr(runner, 'chrome_enabled', False) else "OFF"
-        await send_message(chat_id, f"\U0001f310 Chrome browser integration: {status}")
-
     elif cmd in ("/show", "/hide"):
         sub = text.split(maxsplit=1)[1].lower().strip() if len(text.split()) > 1 else ""
         if sub == "code":
@@ -1507,87 +1463,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             await send_message(chat_id, "Showing everything \u26a1\U0001f4ad" if val else "Clean output \u2014 just final answers")
         else:
             await send_message(chat_id, f"Usage: {cmd} code | thoughts | both")
-
-    elif cmd == "/display":
-        prefs = display_prefs.get_display_prefs(user_id)
-        tools_status = "on" if prefs["show_tools"] else "off"
-        thoughts_status = "on" if prefs["show_thoughts"] else "off"
-        await send_message(chat_id, f"Current display settings:\n\u26a1 Tool indicators: {tools_status}\n\U0001f4ad Thoughts: {thoughts_status}")
-
-    elif cmd == "/schedule":
-        arg = text[len("/schedule"):].strip()
-        if not arg or not scheduler:
-            if not scheduler:
-                await send_message(chat_id, "Scheduler is not available.")
-            else:
-                await send_message(
-                    chat_id,
-                    "Usage: /schedule <recurrence> <task>\n\n"
-                    "Examples:\n"
-                    "  /schedule every day 9am summarize AI news\n"
-                    "  /schedule every 2h check for new emails\n"
-                    "  /schedule weekly monday 8am send weekly report\n"
-                    "  /schedule once 2026-04-01 10:00 send April report\n\n"
-                    "Use /schedules to list and /unschedule <id> to cancel."
-                )
-            return
-        # Split recurrence from task description
-        # Try to find where the recurrence ends and description begins
-        parsed = None
-        task_desc = ""
-        words = arg.split()
-        for split in range(len(words), 0, -1):
-            candidate = " ".join(words[:split])
-            result = scheduler.parse_recurrence(candidate)
-            if result:
-                parsed = result
-                task_desc = " ".join(words[split:])
-                break
-        if not parsed or not task_desc:
-            await send_message(
-                chat_id,
-                "Couldn't parse that schedule. Try:\n"
-                "  /schedule every day 9am <task description>\n"
-                "  /schedule every 2h <task description>\n"
-                "  /schedule weekly monday 9am <task description>"
-            )
-            return
-        recurrence_type, params = parsed
-        sched_id = scheduler.add_schedule(chat_id, task_desc, recurrence_type, params)
-        label = scheduler.recurrence_label(recurrence_type, params)
-        await send_message(chat_id, f"\u23f0 Schedule #{sched_id} set ({label}):\n{task_desc}")
-
-    elif cmd == "/schedules":
-        if not scheduler:
-            await send_message(chat_id, "Scheduler is not available.")
-            return
-        import json
-        rows = scheduler.list_schedules(chat_id)
-        if not rows:
-            await send_message(chat_id, "No active schedules. Use /schedule to add one.")
-            return
-        lines = ["<b>Active Schedules:</b>\n"]
-        for r in rows:
-            data = json.loads(r["recurrence"])
-            rtype = data.pop("type")
-            label = scheduler.recurrence_label(rtype, data)
-            lines.append(f"<b>#{r['id']}</b> {label}\n  {r['description']}")
-        lines.append("\nUse /unschedule &lt;id&gt; to cancel.")
-        await send_message(chat_id, "\n".join(lines), parse_mode="HTML")
-
-    elif cmd == "/unschedule":
-        if not scheduler:
-            await send_message(chat_id, "Scheduler is not available.")
-            return
-        arg = text[len("/unschedule"):].strip()
-        if not arg.isdigit():
-            await send_message(chat_id, "Usage: /unschedule <id>\nGet IDs from /schedules")
-            return
-        removed = scheduler.remove_schedule(chat_id, int(arg))
-        if removed:
-            await send_message(chat_id, f"\u2705 Schedule #{arg} cancelled.")
-        else:
-            await send_message(chat_id, f"Schedule #{arg} not found.")
 
     elif cmd == "/new":
         inst = instances.get_active_for(owner_id)
@@ -1607,167 +1482,52 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         # otherwise Telegram retries the update and causes a restart loop.
         asyncio.create_task(_delayed_restart())
 
-    elif cmd == "/status":
-        info = health.get_status()
-        uptime_min = info["uptime_seconds"] / 60
-        claude_ok = "\u2705" if info["claude_available"] else "\u274c"
-
-        # Per-instance status (scoped to requesting user's pool)
-        _active_for_user = instances.get_active_for(owner_id)
-        inst_lines = []
-        for disp_num, inst in enumerate(instances.list_all(for_owner_id=owner_id), start=1):
-            marker = "\u25b6" if inst.id == _active_for_user.id else " "
-            status = "busy" if inst.processing else "idle"
-            q = inst.queue.qsize() if inst.queue else 0
-            inst_lines.append(f"{marker}#{disp_num} {inst.title}: {status} (queue: {q})")
-        inst_status = "\n".join(inst_lines)
-
-        await send_message(
-            chat_id,
-            f"Server uptime: {uptime_min:.1f} min\n"
-            f"Messages processed: {info['message_count']}\n"
-            f"Claude CLI available: {claude_ok}\n\n"
-            f"Instances:\n{inst_status}",
-        )
-
     elif cmd == "/help":
-        voice_status = "ON" if _voice_reply_mode else "OFF"
-        chrome_status = "ON" if getattr(runner, 'chrome_enabled', False) else "OFF"
-        import shutil as _shutil
-        from config import MEMORY_ENABLED
-        memory_status = "ON" if MEMORY_ENABLED else "OFF"
-        ffmpeg_status = "available" if _shutil.which("ffmpeg") else "not installed"
         active = instances.get_active_for(owner_id)
         user_inst_count = len(instances.list_all(for_owner_id=owner_id))
         inst_info = f"Active: #{instances.display_num(active.id, owner_id)} ({active.title})" if user_inst_count >= 2 else "1 instance running"
         help_text = (
-            "**Available Commands:**\n\n"
-            "**\U0001f3a8 Image Generation**\n"
-            "/imagine <prompt> \u2014 Generate an image\n\n"
-            "**\U0001f310 Browser Automation (Playwright)**\n"
-            "/screenshot <url> \u2014 Take a screenshot of any URL\n"
-            "/browse <url> \u2014 Extract readable text from any URL\n\n"
-            "**\U0001f50d Research & Intel**\n"
-            "**\U0001f916 Orchestration**\n"
-            "/orch <task> \u2014 Break task into parallel agents, synthesize results\n\n"
-            "**\U0001f916 Agents**\n"
-            "/agent list \u2014 Show all agents\n"
-            "/agent create <type> <name> \u2014 Create a specialist agent  _→ /agent create research News Hound_\n"
-            "/agent talk <name> \u2014 Talk directly to an agent  _→ /agent talk News Hound_\n"
-            "/agent back \u2014 Return to default instance\n"
-            "/agent task <name> <task> \u2014 Assign a one-off task  _→ /agent task News Hound summarize AI news_\n"
-            "/agent fix <name> <rule> \u2014 Patch a rule into agent's prompt  _→ /agent fix News Hound always cite sources_\n"
-            "/agent feedback <name> <issue> \u2014 Record feedback & auto-improve  _→ /agent feedback News Hound missed the SEC angle_\n"
-            "/agent delete <name> \u2014 Delete an agent\n\n"
-            "**⚡ Triggers (Event-Driven Agents)**\n"
-            "/trigger list — list all triggers\n"
-            "/trigger create <id> <agent> manual — fire manually with /trigger run\n"
-            "/trigger create <id> <agent> webhook [event=push] [branch=main] — external HTTP trigger\n"
-            "/trigger create <id> <agent> file_change path=/path — fire on file change\n"
-            "/trigger run <id> — fire any trigger manually\n"
-            "/trigger info <id> — show trigger details\n"
-            "/trigger enable|disable|delete <id>\n"
-            "_Agents are never removed when a trigger is deleted._\n\n"
-            "**\U0001f9e0 Skills**\n"
-            "/skill list \u2014 Show all skill packs\n"
-            "/skill show <id> \u2014 See a skill's full prompt\n"
-            "/skill create <id> <description> \u2014 Create a custom skill\n"
-            "/skill edit <id> prompt <text> \u2014 Edit a skill's prompt\n"
-            "/skill delete <id> \u2014 Delete a custom skill\n\n"
-            "**\U0001f4dc Instances (Multi-Chat)**\n"
-            f"_{inst_info}_\n"
-            "Each instance is a separate CLI session with its own conversation history. "
-            "They don't share context \u2014 you can have one researching while another codes.\n"
-            "Instances run concurrently \u2014 you can send messages to different instances without waiting.\n"
-            "/inst new <title> \u2014 Spin up a new independent CLI session\n"
-            "/inst list \u2014 Show all running instances with IDs & titles\n"
-            "/inst switch <id/title> [new_title] \u2014 Switch instance (creates if missing, renames if new_title given)\n"
-            "/inst rename <id> <title> \u2014 Rename an instance\n"
-            "/inst end <id> \u2014 Close an instance (can't close the last one)\n"
-            "/inst \u2014 Show active instance & subcommands\n"
-            "_When 2+ instances exist, responses are labeled. Mention an instance by name or # to auto-route._\n\n"
-            "**\U0001f4e8 Quick Message (@)**\n"
-            "Send a one-shot message to any instance without switching away from your current one.\n"
-            "`@<id or name> <message>` \u2014 Routes message to that instance & brings back the reply. You stay on your current instance.\n"
-            "_Example: `@2 what's the status?` or `@Research summarize what you found`_\n"
-            "_Creates the instance if it doesn\u2019t exist yet._\n\n"
-            "**\U0001f3a4 Voice**\n"
-            f"/voice \u2014 Toggle voice replies [{voice_status}]\n\n"
-            "**\u2699\ufe0f Control**\n"
+            "**Commands:**\n\n"
+            "**Control**\n"
+            "/stop \u2014 Stop current task & clear queue\n"
+            "/kill \u2014 Force-kill all processes across all instances\n"
             "/new \u2014 Reset conversation for the active instance\n"
-            "/stop \u2014 Stop current task & clear queue (active instance only)\n"
-            "/kill \u2014 Force-kill all Claude processes across all instances\n"
-            f"/chrome \u2014 Toggle Chrome browser [{chrome_status}]\n"
-            f"/model sonnet|opus \u2014 Switch model for active instance [{(active.model.split('-')[1] if '-' in active.model else active.model).capitalize()}]\n\n"
-            "**\U0001f441\ufe0f Display**\n"
-            "/display \u2014 Show current display settings\n"
-            "/show code | thoughts | both \u2014 Turn on tool indicators / thinking blocks\n"
-            "/hide code | thoughts | both \u2014 Turn off tool indicators / thinking blocks\n\n"
-            f"**\U0001f9e0 Memory & Tasks** [memory: {memory_status} | voice TTS: {ffmpeg_status}]\n"
-            "/remember <text> \u2014 Save to memory\n"
-            "/task \u2014 View/manage task list\n"
-            "/memory \u2014 Memory stats & re-index\n\n"
-
-            "**\U0001f4bb System**\n"
-            "/status \u2014 Server status & queue depth\n"
             "/server \u2014 Restart bridge server\n"
-            "/help \u2014 Show this help\n\n"
-            "Messages are queued per instance (up to 10 each). "
-            "Different instances process concurrently.\n\n"
-            "*Any unrecognized /command is forwarded directly to the active runner* "
-            "(e.g. Claude skills like /security-review, /commit, /remote-control)."
+            f"/model sonnet|opus \u2014 Switch model [{(active.model.split('-')[1] if '-' in active.model else active.model).capitalize()}]\n\n"
+            "**Display**\n"
+            "/show code | thoughts | both\n"
+            "/hide code | thoughts | both\n\n"
+            "**Instances**\n"
+            f"_{inst_info}_\n"
+            "/inst new <title> \u2014 New independent session\n"
+            "/inst list \u2014 Show all instances\n"
+            "/inst switch <id/title> [new_title] \u2014 Switch/create/rename\n"
+            "/inst rename <id> <title>\n"
+            "/inst end <id>\n"
+            "_`@<id or name> <msg>` \u2014 One-shot message to any instance_\n\n"
+            "**Agents**\n"
+            "/agent talk <name> \u2014 Switch to an agent\n"
+            "/agent back \u2014 Return to default\n"
+            "/agent pipeline <a> → <b> \"task\" \u2014 Sequential pipeline\n"
+            "/agent proactive start|stop|list\n"
+            "/agent proactive <name> set <schedule> <task>\n"
+            "/agent proactive <name> on|off|clear\n\n"
+            "**Triggers**\n"
+            "/trigger run <id> \u2014 Fire a trigger manually\n\n"
+            "**Orchestration**\n"
+            "/orch <task> \u2014 Parallel agents, synthesized result\n\n"
+            "**Recording**\n"
+            "/record \u2014 Start screen recording\n"
+            "/stoprecord \u2014 Stop and send video\n\n"
+            "**Collab**\n"
+            "/collab ask <peer> <task>\n"
+            "/collab broadcast <msg>\n"
+            "/borrow <peer> [bot] \u2014 Route messages to peer's bot\n"
+            "/return \u2014 Disconnect from borrowed bot\n\n"
+            "/help \u2014 Show this\n\n"
+            "_Any unrecognized /command is forwarded to the active runner (Claude skills, etc.)_"
         )
         await send_message(chat_id, help_text, format_markdown=True)
-
-    elif cmd == "/task":
-        parts = text.split(maxsplit=2)
-        sub = parts[1].lower() if len(parts) > 1 else ""
-
-        if sub == "add" and len(parts) > 2:
-            result = task_handler.add_task(parts[2])
-            await send_message(chat_id, f"\u2705 {result}")
-        elif sub == "done" and len(parts) > 2:
-            try:
-                num = int(parts[2])
-                result = task_handler.done_task(num)
-                await send_message(chat_id, result)
-            except ValueError:
-                await send_message(chat_id, "Usage: /task done <number>")
-        else:
-            result = task_handler.list_tasks()
-            await send_message(chat_id, result)
-
-    elif cmd == "/remember":
-        text_to_remember = text[len("/remember"):].strip()
-        if not text_to_remember:
-            await send_message(chat_id, "Usage: /remember <text to save>")
-        else:
-            result = await memory_handler.remember(text_to_remember, user_id=user_id)
-            await send_message(chat_id, f"\U0001f4be {result}")
-
-    elif cmd == "/memory":
-        parts = text.split()
-        if len(parts) > 1 and parts[1].lower() == "reindex":
-            await send_message(chat_id, "\U0001f504 Re-indexing memory files...")
-            count = await memory_handler.reindex(user_id=user_id)
-            await send_message(chat_id, f"\u2705 Re-indexed {count} chunks from text files.")
-        else:
-            stats = await memory_handler.get_stats(user_id=user_id)
-            if not stats.get("enabled"):
-                await send_message(chat_id, "Memory is disabled.")
-            elif "error" in stats:
-                await send_message(chat_id, f"Memory error: {stats['error']}")
-            else:
-                await send_message(
-                    chat_id,
-                    f"\U0001f9e0 Memory Stats:\n"
-                    f"Total entries: {stats['total_entries']}\n"
-                    f"Collection: {stats['collection']}\n"
-                    f"Text files: {stats['text_files']}\n"
-                    f"Memory dir: {stats['memory_dir']}\n"
-                    f"Remembered file: {'Yes' if stats['remembered_file'] else 'No'}\n\n"
-                    f"Use /memory reindex to re-index text files.",
-                )
 
     elif cmd == "/record":
         if screen_recorder.is_recording():
@@ -1925,61 +1685,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         sub = parts[1].lower() if len(parts) > 1 else ""
         arg = parts[2] if len(parts) > 2 else ""
 
-        if sub == "list":
-            await send_message(chat_id, agent_manager.format_agent_list(instances), parse_mode="HTML")
-
-        elif sub == "create":
-            # /agent create <type> <name>  OR  /agent create <name> (custom type)
-            create_parts = arg.split(maxsplit=1)
-            if not create_parts:
-                skill_ids = [s.id for s in list_skills_db()] or list(SKILL_PACKS.keys())
-                await send_message(chat_id,
-                    "Usage: /agent create &lt;type&gt; &lt;name&gt;\n"
-                    f"Types: {', '.join(skill_ids)}\n"
-                    "Example: /agent create research My Researcher\n\n"
-                    "See /skill list for all available skill types.",
-                    parse_mode="HTML")
-            else:
-                type_or_name = create_parts[0].lower()
-                is_proactive_type = type_or_name == "proactive"
-                skill_ids_set = {s.id for s in list_skills_db()} or set(SKILL_PACKS.keys())
-                if (type_or_name in skill_ids_set or is_proactive_type) and len(create_parts) > 1:
-                    agent_type = type_or_name
-                    agent_name = create_parts[1]
-                else:
-                    agent_type = "custom"
-                    agent_name = arg
-                agent_id = re.sub(r"[^a-z0-9_]", "_", agent_name.lower())[:20]
-                try:
-                    from agent_skills import DEFAULT_AGENT_PROMPTS
-                    system_prompt = DEFAULT_AGENT_PROMPTS.get(agent_type, "")
-                    new_agent = create_agent(
-                        agent_id=agent_id,
-                        name=agent_name,
-                        agent_type=agent_type,
-                        system_prompt=system_prompt,
-                        skills=[agent_type] if agent_type in skill_ids_set else [],
-                    )
-                    if is_proactive_type:
-                        await send_message(chat_id,
-                            f"🤖 Proactive agent created: <b>{new_agent.name}</b>\n"
-                            f"ID: <code>{new_agent.id}</code>\n\n"
-                            f"Now set its schedule and task:\n"
-                            f"<code>/agent proactive {new_agent.id} set 09:00 your task here</code>\n"
-                            f"<code>/agent proactive {new_agent.id} set every 2h your task here</code>\n\n"
-                            f"Then start the worker:\n"
-                            f"<code>/agent proactive start</code>",
-                            parse_mode="HTML")
-                    else:
-                        await send_message(chat_id,
-                            f"Agent created: <b>{new_agent.name}</b>\n"
-                            f"ID: {new_agent.id} | Type: {new_agent.agent_type}\n"
-                            f"Use /agent talk {new_agent.id} to start talking to it.",
-                            parse_mode="HTML")
-                except ValueError as e:
-                    await send_message(chat_id, f"Error: {e}")
-
-        elif sub in ("talk", "switch"):
+        if sub in ("talk", "switch"):
             if not arg:
                 await send_message(chat_id, "Usage: /agent talk &lt;agent name or id&gt;", parse_mode="HTML")
             else:
@@ -2010,41 +1716,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             else:
                 await send_message(chat_id, "No default instance found.")
 
-        elif sub == "task":
-            # /agent task <name> <task description>
-            task_parts = arg.split(maxsplit=1)
-            if len(task_parts) < 2:
-                await send_message(chat_id, "Usage: /agent task &lt;agent&gt; &lt;task description&gt;", parse_mode="HTML")
-            else:
-                target = resolve_agent(task_parts[0])
-                task_desc = task_parts[1]
-                if target is None:
-                    await send_message(chat_id, f"Agent '{task_parts[0]}' not found. Try /agent list")
-                else:
-                    queued = await agent_manager.assign_task(target.id, task_desc, chat_id, instances, send_message, owner_id)
-                    if queued:
-                        await send_message(chat_id, f"Task queued for <b>{target.name}</b>: {task_desc[:100]}", parse_mode="HTML")
-                    else:
-                        await send_message(chat_id, f"Failed to queue task for {target.name} (queue full or agent not found).")
-
-        elif sub == "schedule":
-            # /agent schedule <name> <HH:MM> <task description>
-            sched_parts = arg.split(maxsplit=2)
-            if len(sched_parts) < 3:
-                await send_message(chat_id,
-                    "Usage: /agent schedule &lt;agent&gt; &lt;HH:MM&gt; &lt;task&gt;\n"
-                    "Example: /agent schedule research 09:00 daily AI market briefing",
-                    parse_mode="HTML")
-            else:
-                target = resolve_agent(sched_parts[0])
-                time_str = sched_parts[1]
-                task_desc = sched_parts[2]
-                if target is None:
-                    await send_message(chat_id, f"Agent '{sched_parts[0]}' not found.")
-                else:
-                    result = agent_manager.schedule_agent_task(target.id, time_str, task_desc)
-                    await send_message(chat_id, result)
-
         elif sub == "pipeline":
             # /agent pipeline Research → Analytics "task"
             if not arg:
@@ -2065,106 +1736,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                         )
                         await send_message(chat_id, result, format_markdown=True)
                     asyncio.create_task(_run_pipeline())
-
-        elif sub == "skills":
-            if arg:
-                target = resolve_agent(arg)
-                if target is None:
-                    await send_message(chat_id, f"Agent '{arg}' not found.")
-                else:
-                    from agent_memory import get_agent_graph_summary
-                    graph_info = get_agent_graph_summary(target.id)
-                    skills_text = "\n".join(f"  {s}" for s in target.skills) if target.skills else "  (none)"
-                    await send_message(chat_id,
-                        f"<b>{target.name}</b>\n"
-                        f"Type: {target.agent_type} | Model: {target.model}\n"
-                        f"Skills:\n{skills_text}\n"
-                        f"Collaborators: {', '.join(target.collaborators) or 'none'}\n"
-                        f"{graph_info}",
-                        parse_mode="HTML")
-            else:
-                await send_message(chat_id, list_skills())
-
-        elif sub == "update":
-            # /agent update <name> prompt=<text>  OR  name=<new name>
-            update_parts = arg.split(maxsplit=1)
-            if len(update_parts) < 2:
-                await send_message(chat_id, "Usage: /agent update &lt;agent&gt; prompt=&lt;new prompt&gt;", parse_mode="HTML")
-            else:
-                target = resolve_agent(update_parts[0])
-                field_val = update_parts[1]
-                if target is None:
-                    await send_message(chat_id, f"Agent '{update_parts[0]}' not found.")
-                elif "=" not in field_val:
-                    await send_message(chat_id, "Format: field=value (e.g. prompt=You are...)")
-                else:
-                    field, value = field_val.split("=", 1)
-                    field = field.strip()
-                    value = value.strip().strip('"')
-                    updated = update_agent(target.id, **{field: value})
-                    if updated:
-                        # Update running instance if active
-                        running = agent_manager.get_running_instance(target.id, instances)
-                        if running and field == "system_prompt":
-                            from agent_skills import build_skills_prompt
-                            running.agent_system_prompt = value + "\n\n" + build_skills_prompt(updated.skills)
-                        await send_message(chat_id, f"Updated <b>{target.name}</b>: {field} changed.", parse_mode="HTML")
-                    else:
-                        await send_message(chat_id, f"Update failed.")
-
-        elif sub == "delete":
-            if not arg:
-                await send_message(chat_id, "Usage: /agent delete &lt;agent name or id&gt;", parse_mode="HTML")
-            else:
-                target = resolve_agent(arg)
-                if target is None:
-                    await send_message(chat_id, f"Agent '{arg}' not found.")
-                else:
-                    # If running, end the instance first
-                    running = agent_manager.get_running_instance(target.id, instances)
-                    if running:
-                        instances.remove(running.id, owner_id=owner_id)
-                    deleted = delete_agent(target.id)
-                    if deleted:
-                        await send_message(chat_id, f"Deleted agent: {target.name}")
-                    else:
-                        await send_message(chat_id, f"Delete failed.")
-
-        elif sub == "fix":
-            # /agent fix <name> "rule to add"
-            fix_parts = arg.split(maxsplit=1)
-            if len(fix_parts) < 2:
-                await send_message(chat_id,
-                    "Usage: /agent fix &lt;agent&gt; &lt;rule&gt;\n"
-                    "Example: /agent fix research Always cite sources with full URLs",
-                    parse_mode="HTML")
-            else:
-                target = resolve_agent(fix_parts[0])
-                rule = fix_parts[1].strip().strip('"')
-                if target is None:
-                    await send_message(chat_id, f"Agent '{fix_parts[0]}' not found. Try /agent list")
-                else:
-                    await send_message(chat_id, f"Updating {target.name}'s prompt...", parse_mode="HTML")
-                    msg = await agent_manager.fix_agent_prompt(target.id, rule, instances=instances)
-                    await send_message(chat_id, msg, parse_mode="HTML")
-
-        elif sub == "feedback":
-            # /agent feedback <name> "what was wrong"
-            fb_parts = arg.split(maxsplit=1)
-            if len(fb_parts) < 2:
-                await send_message(chat_id,
-                    "Usage: /agent feedback &lt;agent&gt; &lt;what was wrong&gt;\n"
-                    "Example: /agent feedback research You forgot to cite sources and gave speculation as fact",
-                    parse_mode="HTML")
-            else:
-                target = resolve_agent(fb_parts[0])
-                feedback_text = fb_parts[1].strip().strip('"')
-                if target is None:
-                    await send_message(chat_id, f"Agent '{fb_parts[0]}' not found. Try /agent list")
-                else:
-                    await send_message(chat_id, f"Processing feedback for {target.name}...", parse_mode="HTML")
-                    msg = await agent_manager.record_agent_feedback(target.id, feedback_text, instances=instances)
-                    await send_message(chat_id, msg, parse_mode="HTML")
 
         elif sub == "proactive":
             # /agent proactive list
@@ -2264,147 +1835,17 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             if active_inst.agent_id:
                 active_agent = get_agent(active_inst.agent_id)
                 if active_agent:
-                    agent_label = f"\nCurrently talking to: <b>{active_agent.name}</b>"
+                    agent_label = f"\nTalking to: <b>{active_agent.name}</b>"
 
             await send_message(chat_id,
-                f"<b>Agent System</b>{agent_label}\n\n"
-                "<b>/agent list</b> — Show all agents\n"
-                "  <i>→ /agent list</i>\n\n"
-                "<b>/agent create &lt;type&gt; &lt;name&gt;</b> — Create a specialist agent\n"
-                "  <i>→ /agent create research News Hound</i>\n\n"
-                "<b>/agent talk &lt;name&gt;</b> — Talk directly to an agent\n"
-                "  <i>→ /agent talk News Hound</i>\n\n"
+                f"<b>Agent Commands</b>{agent_label}\n\n"
+                "<b>/agent talk &lt;name&gt;</b> — Switch to an agent\n"
                 "<b>/agent back</b> — Return to default instance\n"
-                "  <i>→ /agent back</i>\n\n"
-                "<b>/agent task &lt;name&gt; &lt;task&gt;</b> — Assign a one-off task\n"
-                "  <i>→ /agent task News Hound find top AI funding rounds this week</i>\n\n"
-                "<b>/agent schedule &lt;name&gt; &lt;HH:MM&gt; &lt;task&gt;</b> — Schedule recurring task\n"
-                "  <i>→ /agent schedule News Hound 09:00 daily AI market briefing</i>\n\n"
-                "<b>/agent pipeline &lt;a&gt; → &lt;b&gt; \"task\"</b> — Sequential agent pipeline\n"
-                "  <i>→ /agent pipeline News Hound → analytics \"AI funding trends\"</i>\n\n"
-                "<b>/agent skills [name]</b> — List skill packs or agent's skills\n"
-                "  <i>→ /agent skills News Hound</i>\n\n"
-                "<b>/agent update &lt;name&gt; field=value</b> — Update agent config\n"
-                "  <i>→ /agent update News Hound prompt=Always cite sources with URLs</i>\n\n"
-                "<b>/agent fix &lt;name&gt; &lt;rule&gt;</b> — Add/merge a rule into agent's prompt\n"
-                "  <i>→ /agent fix News Hound Always output results as numbered lists</i>\n\n"
-                "<b>/agent feedback &lt;name&gt; &lt;what was wrong&gt;</b> — Record feedback + auto-improve\n"
-                "  <i>→ /agent feedback News Hound You missed the SEC angle and only cited 2 sources</i>\n\n"
-                "<b>🤖 Proactive Agents</b>\n"
-                "<b>/agent create proactive &lt;name&gt;</b> — Create a proactive agent\n"
-                "  <i>→ /agent create proactive Daily Briefing</i>\n"
-                "<b>/agent proactive start/stop</b> — Start or stop the worker\n"
-                "<b>/agent proactive list</b> — Show all proactive agents + status\n"
+                "<b>/agent pipeline &lt;a&gt; → &lt;b&gt; \"task\"</b> — Sequential pipeline\n"
+                "<b>/agent proactive start/stop/list</b> — Manage proactive worker\n"
                 "<b>/agent proactive &lt;name&gt; set &lt;schedule&gt; &lt;task&gt;</b> — Configure\n"
-                "  <i>→ /agent proactive research set 09:00 summarize AI news</i>\n"
-                "  <i>→ /agent proactive research set every 2h check trending topics</i>\n"
-                "  <i>→ /agent proactive research set every 30m monitor prices</i>\n"
-                "<b>/agent proactive &lt;name&gt; on/off</b> — Toggle\n"
-                "<b>/agent proactive &lt;name&gt; clear</b> — Wipe config\n\n"
-                "<b>/agent delete &lt;name&gt;</b> — Delete an agent\n"
-                "  <i>→ /agent delete News Hound</i>\n\n"
-                f"<b>Types:</b> {', '.join(s.id for s in list_skills_db()) or ', '.join(SKILL_PACKS.keys())}  (see /skill list)",
-                parse_mode="HTML")
-
-    elif cmd == "/skill":
-        parts = text.split(maxsplit=2)
-        sub = parts[1].lower() if len(parts) > 1 else ""
-        arg = parts[2] if len(parts) > 2 else ""
-
-        if not sub or sub == "list":
-            skills = list_skills_db()
-            if not skills:
-                await send_message(chat_id, "No skills found. Run /skill list after startup seeding.")
-            else:
-                lines = ["<b>Skills</b>\n"]
-                for s in skills:
-                    tag = "🔒" if s.is_builtin else "✏️"
-                    lines.append(f"{tag} <b>{s.id}</b> — {s.description}")
-                lines.append("\n/skill show &lt;id&gt; — see full prompt")
-                await send_message(chat_id, "\n".join(lines), parse_mode="HTML")
-
-        elif sub == "show":
-            if not arg:
-                await send_message(chat_id, "Usage: /skill show &lt;id&gt;", parse_mode="HTML")
-            else:
-                skill = get_skill(arg.strip())
-                if not skill:
-                    await send_message(chat_id, f"Skill '{arg}' not found. Try /skill list")
-                else:
-                    tag = "🔒 built-in" if skill.is_builtin else "✏️ custom"
-                    msg = (
-                        f"<b>{skill.id}</b> [{tag}]\n"
-                        f"<i>{skill.description}</i>\n\n"
-                        f"<pre>{skill.prompt[:3000]}</pre>"
-                    )
-                    await send_message(chat_id, msg, parse_mode="HTML")
-
-        elif sub == "create":
-            # /skill create <id> <description>
-            create_parts = arg.split(maxsplit=1)
-            if len(create_parts) < 2:
-                await send_message(chat_id,
-                    "Usage: /skill create &lt;id&gt; &lt;description&gt;\n"
-                    "Example: /skill create seo SEO optimization and keyword research\n\n"
-                    "Then set the prompt with:\n"
-                    "/skill edit &lt;id&gt; prompt &lt;your prompt text&gt;",
-                    parse_mode="HTML")
-            else:
-                skill_id = re.sub(r"[^a-z0-9_]", "_", create_parts[0].lower())[:30]
-                description = create_parts[1]
-                try:
-                    new_skill = create_skill(skill_id=skill_id, description=description)
-                    await send_message(chat_id,
-                        f"✅ Skill created: <b>{new_skill.id}</b>\n"
-                        f"Description: {new_skill.description}\n\n"
-                        f"Set the prompt with:\n"
-                        f"<code>/skill edit {new_skill.id} prompt your prompt text here</code>",
-                        parse_mode="HTML")
-                except ValueError as e:
-                    await send_message(chat_id, f"Error: {e}")
-
-        elif sub == "edit":
-            # /skill edit <id> description <text>  OR  /skill edit <id> prompt <text>
-            edit_parts = arg.split(maxsplit=2)
-            if len(edit_parts) < 3:
-                await send_message(chat_id,
-                    "Usage:\n"
-                    "/skill edit &lt;id&gt; description &lt;new description&gt;\n"
-                    "/skill edit &lt;id&gt; prompt &lt;new prompt text&gt;",
-                    parse_mode="HTML")
-            else:
-                skill_id, field_name, value = edit_parts[0], edit_parts[1].lower(), edit_parts[2]
-                if field_name not in ("description", "prompt"):
-                    await send_message(chat_id, "Field must be 'description' or 'prompt'.")
-                else:
-                    updated = update_skill(skill_id, **{field_name: value})
-                    if updated is None:
-                        await send_message(chat_id, f"Skill '{skill_id}' not found. Try /skill list")
-                    else:
-                        await send_message(chat_id,
-                            f"✅ Updated <b>{updated.id}</b> {field_name}.",
-                            parse_mode="HTML")
-
-        elif sub == "delete":
-            if not arg:
-                await send_message(chat_id, "Usage: /skill delete &lt;id&gt;", parse_mode="HTML")
-            else:
-                ok, reason = delete_skill(arg.strip())
-                if ok:
-                    await send_message(chat_id, f"🗑️ Skill <b>{arg}</b> deleted.", parse_mode="HTML")
-                else:
-                    await send_message(chat_id, f"Cannot delete: {reason}")
-
-        else:
-            await send_message(chat_id,
-                "<b>/skill commands</b>\n\n"
-                "/skill list — Show all skills\n"
-                "/skill show &lt;id&gt; — Show full prompt\n"
-                "/skill create &lt;id&gt; &lt;description&gt; — Create new skill\n"
-                "/skill edit &lt;id&gt; description &lt;text&gt; — Edit description\n"
-                "/skill edit &lt;id&gt; prompt &lt;text&gt; — Edit prompt\n"
-                "/skill delete &lt;id&gt; — Delete custom skill (built-ins protected)\n\n"
-                "🔒 = built-in (editable but not deletable)  ✏️ = custom",
+                "<b>/agent proactive &lt;name&gt; on/off/clear</b> — Toggle or wipe\n\n"
+                "To create/edit/delete agents, just tell me what you need.",
                 parse_mode="HTML")
 
     elif cmd == "/orch":
@@ -2424,33 +1865,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                 await send_message(chat_id, result, format_markdown=True)
             asyncio.create_task(_run_orch())
 
-    elif cmd == "/imagine":
-        prompt = text[len("/imagine"):].strip()
-        if not prompt:
-            await send_message(chat_id, "Usage: /imagine <prompt>\nExample: /imagine a cat riding a skateboard")
-        else:
-            asyncio.create_task(_process_image_generation(chat_id, prompt))
-
-    elif cmd == "/screenshot":
-        from config import PLAYWRIGHT_ENABLED
-        url = text[len("/screenshot"):].strip()
-        if not url:
-            await send_message(chat_id, "Usage: /screenshot <url>\nExample: /screenshot https://example.com")
-        elif not _playwright_available or not PLAYWRIGHT_ENABLED:
-            await send_message(chat_id, "\u274c Playwright not available. Run: pip install playwright && playwright install chromium")
-        else:
-            asyncio.create_task(_process_screenshot(chat_id, url))
-
-    elif cmd == "/browse":
-        from config import PLAYWRIGHT_ENABLED
-        url = text[len("/browse"):].strip()
-        if not url:
-            await send_message(chat_id, "Usage: /browse <url>\nExample: /browse https://news.ycombinator.com")
-        elif not _playwright_available or not PLAYWRIGHT_ENABLED:
-            await send_message(chat_id, "\u274c Playwright not available. Run: pip install playwright && playwright install chromium")
-        else:
-            asyncio.create_task(_process_browse(chat_id, url))
-
     elif cmd == "/collab":
         if not COLLAB_ENABLED:
             await send_message(chat_id, "Collab is disabled. Set COLLAB_ENABLED=true to enable.")
@@ -2469,101 +1883,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             await send_message(chat_id, f"Collab module error: {_e}")
             return
 
-        if not sub or sub == "help":
-            await send_message(
-                chat_id,
-                "<b>Collab — Federated Peer Network</b>\n\n"
-                "<b>/collab peers</b> — Show all known peers and online status\n"
-                "<b>/collab add &lt;name&gt; &lt;url&gt; &lt;tier&gt;</b> — Add a peer (generates token)\n"
-                "  Tiers: family | friend | acquaintance\n"
-                "<b>/collab remove &lt;name&gt;</b> — Remove a peer\n"
-                "<b>/collab feed</b> — Show combined activity feed\n"
-                "<b>/collab ask &lt;peer&gt; &lt;task&gt;</b> — Delegate a task to a peer\n"
-                "<b>/collab broadcast &lt;msg&gt;</b> — Broadcast message to all peers\n",
-                parse_mode="HTML",
-            )
-
-        elif sub == "peers":
-            peers = load_peers()
-            if not peers:
-                await send_message(chat_id, "No peers configured. Use /collab add to add one.")
-                return
-            await send_message(chat_id, "Checking peer status...")
-            lines = [f"<b>Collab Peers ({len(peers)})</b>\n"]
-            for name, peer in peers.items():
-                profile = await collab_client.fetch_profile(peer)
-                online = "online" if profile else "offline"
-                bots = ", ".join(profile.get("bots", [])) if profile else peer.get("bots", [])
-                if isinstance(bots, list):
-                    bots = ", ".join(bots)
-                lines.append(
-                    f"<b>{name}</b> [{peer.get('tier', '?')}] — {online}\n"
-                    f"  {peer.get('url', '')}\n"
-                    f"  bots: {bots or 'unknown'}"
-                )
-            await send_message(chat_id, "\n\n".join(lines), parse_mode="HTML")
-
-        elif sub == "add":
-            # /collab add <name> <url> <tier>
-            add_parts = arg.split(maxsplit=2)
-            if len(add_parts) < 3:
-                await send_message(
-                    chat_id,
-                    "Usage: /collab add &lt;name&gt; &lt;url&gt; &lt;tier&gt;\n"
-                    "Tiers: family | friend | acquaintance\n"
-                    "Example: /collab add diony https://dionys-machine.ts.net family",
-                    parse_mode="HTML",
-                )
-                return
-            peer_name, peer_url, peer_tier = add_parts[0], add_parts[1], add_parts[2].lower()
-            if peer_tier not in ("family", "friend", "acquaintance"):
-                await send_message(chat_id, f"Invalid tier '{peer_tier}'. Must be: family, friend, or acquaintance")
-                return
-            # Generate a random token for this peer to send to us
-            new_token = _secrets.token_urlsafe(32)
-            add_peer(peer_name, peer_url, peer_tier, new_token)
-            await send_message(
-                chat_id,
-                f"<b>Peer '{peer_name}' added</b> (tier: {peer_tier})\n\n"
-                f"Share this token with <b>{peer_name}</b> — they must set it as their outbound token for your instance:\n\n"
-                f"<code>{new_token}</code>",
-                parse_mode="HTML",
-            )
-
-        elif sub == "remove":
-            peer_name = arg.strip()
-            if not peer_name:
-                await send_message(chat_id, "Usage: /collab remove &lt;name&gt;", parse_mode="HTML")
-                return
-            ok = remove_peer(peer_name)
-            if ok:
-                await send_message(chat_id, f"Peer '{peer_name}' removed.")
-            else:
-                await send_message(chat_id, f"Peer '{peer_name}' not found.")
-
-        elif sub == "feed":
-            # Show combined feed: local + all peers
-            local_events = await get_feed(limit=10)
-            lines = [f"<b>Activity Feed</b> (local: {COLLAB_INSTANCE_NAME})\n"]
-            for ev in reversed(local_events):
-                import datetime as _dt
-                ts = _dt.datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%H:%M")
-                peer_tag = f" ← {ev['peer_name']}" if ev.get("peer_name") else ""
-                lines.append(f"[{ts}] <b>{ev.get('action', '?')}</b>{peer_tag}: {ev.get('summary', '')[:100]}")
-            peers = load_peers()
-            for peer_name, peer in peers.items():
-                peer_events = await collab_client.fetch_peer_feed(peer)
-                if peer_events:
-                    lines.append(f"\n<b>{peer_name}</b>:")
-                    for ev in peer_events[-5:]:
-                        import datetime as _dt2
-                        ts = _dt2.datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%H:%M")
-                        lines.append(f"  [{ts}] {ev.get('action', '?')}: {ev.get('summary', '')[:80]}")
-            if len(lines) <= 1:
-                lines.append("No events yet.")
-            await send_message(chat_id, "\n".join(lines), parse_mode="HTML")
-
-        elif sub == "ask":
+        if sub == "ask":
             # /collab ask <peer> <task>
             ask_parts = arg.split(maxsplit=1)
             if len(ask_parts) < 2:
@@ -2605,7 +1925,10 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             )
 
         else:
-            await send_message(chat_id, f"Unknown collab subcommand: {sub}\nTry /collab help")
+            await send_message(chat_id,
+                "<b>/collab ask &lt;peer&gt; &lt;task&gt;</b> — Delegate to a peer\n"
+                "<b>/collab broadcast &lt;msg&gt;</b> — Send to all peers",
+                parse_mode="HTML")
 
     elif cmd == "/borrow":
         if not COLLAB_ENABLED or collab_borrow is None:
@@ -2707,31 +2030,8 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         parts = text.split(maxsplit=3)
         sub = parts[1].lower() if len(parts) > 1 else ""
 
-        # /trigger list [agent]
-        if sub in ("list", "") or sub == "":
-            agent_filter = parts[2] if len(parts) > 2 else None
-            triggers = trigger_registry.list_triggers(agent_id=agent_filter)
-            if not triggers:
-                msg = "No triggers configured."
-                if agent_filter:
-                    msg += f"\nNo triggers found for agent '{agent_filter}'."
-                msg += "\n\nCreate one with:\n`/trigger create <id> <agent> webhook`\n`/trigger create <id> <agent> manual`"
-                await send_message(chat_id, msg, format_markdown=True)
-                return
-            lines = [f"**Triggers ({len(triggers)}):**\n"]
-            for t in triggers:
-                status_icon = "✅" if t.enabled else "⏸"
-                last = f"last fired {int(time.time() - t.last_fired)}s ago" if t.last_fired else "never fired"
-                task_preview = (t.task_override[:60] + "…") if len(t.task_override) > 60 else (t.task_override or "_agent default task_")
-                lines.append(
-                    f"{status_icon} **{t.id}** [{t.trigger_type}]\n"
-                    f"  Agent: `{t.agent_id}` | {last}\n"
-                    f"  Task: {task_preview}"
-                )
-            await send_message(chat_id, "\n\n".join(lines), format_markdown=True)
-
         # /trigger run <id>
-        elif sub == "run":
+        if sub == "run":
             if len(parts) < 3:
                 await send_message(chat_id, "Usage: `/trigger run <id>`", format_markdown=True)
                 return
@@ -2748,153 +2048,8 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             if not fired:
                 await send_message(chat_id, f"Failed to fire `{trigger_id}`. Is the agent configured?", format_markdown=True)
 
-        # /trigger info <id>
-        elif sub == "info":
-            if len(parts) < 3:
-                await send_message(chat_id, "Usage: `/trigger info <id>`", format_markdown=True)
-                return
-            t = trigger_registry.get_trigger(parts[2])
-            if not t:
-                await send_message(chat_id, f"Trigger `{parts[2]}` not found.", format_markdown=True)
-                return
-            last_str = f"{int(time.time() - t.last_fired)}s ago" if t.last_fired else "never"
-            config_str = json.dumps(t.config, indent=2) if t.config else "none"
-            await send_message(
-                chat_id,
-                f"**Trigger: {t.id}**\n"
-                f"Type: `{t.trigger_type}`\n"
-                f"Agent: `{t.agent_id}`\n"
-                f"Enabled: {'yes' if t.enabled else 'no'}\n"
-                f"Last fired: {last_str}\n"
-                f"Task override: {t.task_override or '_none (uses agent default)_'}\n"
-                f"Config: ```\n{config_str}\n```",
-                format_markdown=True,
-            )
-
-        # /trigger enable <id>
-        elif sub == "enable":
-            if len(parts) < 3:
-                await send_message(chat_id, "Usage: `/trigger enable <id>`", format_markdown=True)
-                return
-            ok = trigger_registry.set_enabled(parts[2], True)
-            await send_message(chat_id, f"✅ Trigger `{parts[2]}` enabled." if ok else f"Trigger `{parts[2]}` not found.", format_markdown=True)
-
-        # /trigger disable <id>
-        elif sub == "disable":
-            if len(parts) < 3:
-                await send_message(chat_id, "Usage: `/trigger disable <id>`", format_markdown=True)
-                return
-            ok = trigger_registry.set_enabled(parts[2], False)
-            await send_message(chat_id, f"⏸ Trigger `{parts[2]}` disabled." if ok else f"Trigger `{parts[2]}` not found.", format_markdown=True)
-
-        # /trigger delete <id>
-        elif sub == "delete":
-            if len(parts) < 3:
-                await send_message(chat_id, "Usage: `/trigger delete <id>`", format_markdown=True)
-                return
-            deleted = trigger_registry.delete_trigger(parts[2])
-            if deleted:
-                await send_message(chat_id, f"🗑 Trigger `{parts[2]}` deleted. Agent is untouched.", format_markdown=True)
-            else:
-                await send_message(chat_id, f"Trigger `{parts[2]}` not found.", format_markdown=True)
-
-        # /trigger create <id> <agent> <type> [options...]
-        elif sub == "create":
-            # parts[0]=/trigger  parts[1]=create  parts[2]=<id> <agent> <type> [opts]
-            # Re-split the full text for create since we need more args
-            create_parts = text.split(maxsplit=5)
-            # /trigger create <id> <agent> <type> [options]
-            #    [0]      [1]    [2]  [3]    [4]    [5]
-            if len(create_parts) < 5:
-                await send_message(
-                    chat_id,
-                    "Usage:\n"
-                    "`/trigger create <id> <agent> manual`\n"
-                    "`/trigger create <id> <agent> webhook [event=push] [branch=main] [secret=mysecret]`\n"
-                    "`/trigger create <id> <agent> file_change path=/path/to/watch`\n\n"
-                    "_Example: `/trigger create security-on-push coding webhook event=push branch=main`_",
-                    format_markdown=True,
-                )
-                return
-
-            trigger_id = create_parts[2]
-            agent_id_arg = create_parts[3]
-            trigger_type = create_parts[4].lower()
-            options_str = create_parts[5] if len(create_parts) > 5 else ""
-
-            # Validate agent exists
-            target_agent = resolve_agent(agent_id_arg)
-            if not target_agent:
-                await send_message(chat_id, f"Agent `{agent_id_arg}` not found. Use `/agent list` to see agents.", format_markdown=True)
-                return
-
-            if trigger_type not in ("manual", "webhook", "file_change"):
-                await send_message(chat_id, f"Unknown trigger type `{trigger_type}`. Use: `manual`, `webhook`, `file_change`.", format_markdown=True)
-                return
-
-            # Parse key=value options
-            config: dict = {}
-            task_override = ""
-            for token in options_str.split():
-                if "=" in token:
-                    k, _, v = token.partition("=")
-                    if k == "task":
-                        task_override = v.replace("_", " ")
-                    else:
-                        config[k] = v
-
-            try:
-                t = trigger_registry.create_trigger(
-                    trigger_id=trigger_id,
-                    agent_id=target_agent.id,
-                    trigger_type=trigger_type,
-                    config=config,
-                    task_override=task_override,
-                    chat_id=chat_id,
-                )
-            except ValueError as e:
-                await send_message(chat_id, f"❌ {e}", format_markdown=True)
-                return
-
-            # Build response
-            reply_lines = [f"✅ Trigger **{t.id}** created!\n"]
-            reply_lines.append(f"Type: `{t.trigger_type}` → Agent: `{target_agent.name}`")
-            if t.task_override:
-                reply_lines.append(f"Task: _{t.task_override}_")
-            else:
-                reply_lines.append("Task: _agent's default task_")
-
-            if trigger_type == "webhook":
-                # Build webhook URL from WEBHOOK_URL config
-                base_url = WEBHOOK_URL.rstrip("/")
-                if base_url.endswith("/webhook"):
-                    base_url = base_url[:-len("/webhook")]
-                webhook_url = f"{base_url}/triggers/webhook/{t.id}"
-                reply_lines.append(f"\n**Webhook URL:**\n`{webhook_url}`")
-                if config.get("event"):
-                    reply_lines.append(f"Fires on: `{config['event']}` events" + (f" (branch: `{config.get('branch', 'any')}`)" if config.get("branch") else ""))
-                reply_lines.append("\n_For GitHub: add this URL in repo Settings → Webhooks_")
-            elif trigger_type == "file_change":
-                reply_lines.append(f"Watching: `{config.get('path', 'not set')}`")
-                reply_lines.append("_(Note: file_change triggers require the server to be restarted to begin watching)_")
-            elif trigger_type == "manual":
-                reply_lines.append(f"\nFire it with: `/trigger run {t.id}`")
-
-            await send_message(chat_id, "\n".join(reply_lines), format_markdown=True)
-
         else:
-            await send_message(
-                chat_id,
-                "**Trigger commands:**\n"
-                "`/trigger list` — list all triggers\n"
-                "`/trigger create <id> <agent> <type>` — create a trigger\n"
-                "`/trigger run <id>` — fire a trigger manually\n"
-                "`/trigger info <id>` — show trigger details\n"
-                "`/trigger enable <id>` / `/trigger disable <id>`\n"
-                "`/trigger delete <id>` — delete trigger (agent stays)\n\n"
-                "Types: `manual`, `webhook`, `file_change`",
-                format_markdown=True,
-            )
+            await send_message(chat_id, "Usage: `/trigger run <id>`", format_markdown=True)
 
     else:
         # Unknown command — forward to active runner as a regular message.
