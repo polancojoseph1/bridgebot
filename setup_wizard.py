@@ -422,6 +422,18 @@ def show_dashboard(existing: dict):
     else:
         prompt_display = "not set"
 
+    # 9. Display preferences
+    show_tools = existing.get("DISPLAY_SHOW_TOOLS", "true").lower() in ("true", "1", "yes")
+    show_thoughts = existing.get("DISPLAY_SHOW_THOUGHTS", "true").lower() in ("true", "1", "yes")
+    if show_tools and show_thoughts:
+        display_display = "tools + thoughts (default)"
+    elif show_tools:
+        display_display = "tools only"
+    elif show_thoughts:
+        display_display = "thoughts only"
+    else:
+        display_display = "neither (clean output)"
+
     ready = is_required_complete(existing)
 
     print()
@@ -437,6 +449,7 @@ def show_dashboard(existing: dict):
     print(f"  6. Image generation      -- {img_display}")
     print(f"  7. Memory                -- {mem_display}")
     print(f"  8. System prompt         -- {prompt_display}")
+    print(f"  9. Display preferences   -- {display_display}")
     print()
     if ready:
         print("  r. Run the bot")
@@ -913,6 +926,58 @@ def config_prompt(existing: dict):
 
 
 # ---------------------------------------------------------------------------
+# Optional: Display preferences
+# ---------------------------------------------------------------------------
+
+def config_display(existing: dict):
+    print()
+    print("=" * 46)
+    print("  Display Preferences")
+    print("=" * 46)
+    print()
+    print("  By default your bot shows both tool progress and thinking steps.")
+    print("  You can change this anytime with /show or /hide commands.")
+    print()
+    print("  What do you want to see when your bot is working?")
+    print("  1. Both \u2014 code progress AND thinking steps (recommended)")
+    print("  2. Code only \u2014 tool progress, no thinking")
+    print("  3. Thoughts only \u2014 thinking steps, no tool progress")
+    print("  4. Neither \u2014 just the final answer, nothing else")
+    print()
+
+    current_tools = existing.get("DISPLAY_SHOW_TOOLS", "true").lower() in ("true", "1", "yes")
+    current_thoughts = existing.get("DISPLAY_SHOW_THOUGHTS", "true").lower() in ("true", "1", "yes")
+    if current_tools and current_thoughts:
+        current_display = "1"
+    elif current_tools:
+        current_display = "2"
+    elif current_thoughts:
+        current_display = "3"
+    else:
+        current_display = "4"
+
+    display_choice = input(f"\n  Enter 1-4 [current: {current_display}]: ").strip() or current_display
+
+    show_tools = display_choice in ("1", "2")
+    show_thoughts = display_choice in ("1", "3")
+
+    save_value("DISPLAY_SHOW_TOOLS", "true" if show_tools else "false")
+    save_value("DISPLAY_SHOW_THOUGHTS", "true" if show_thoughts else "false")
+    existing["DISPLAY_SHOW_TOOLS"] = "true" if show_tools else "false"
+    existing["DISPLAY_SHOW_THOUGHTS"] = "true" if show_thoughts else "false"
+
+    labels = []
+    if show_tools:
+        labels.append("tool indicators")
+    if show_thoughts:
+        labels.append("thinking blocks")
+    what = " + ".join(labels) if labels else "final answers only"
+    print(f"\n    Saved! Will show: {what}")
+    print("    (Change anytime with /show or /hide in Telegram)")
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Run the bot
 # ---------------------------------------------------------------------------
 
@@ -1267,6 +1332,8 @@ def _main():
         elif choice == "8":
             config_prompt(existing)
         elif choice == "9":
+            config_display(existing)
+        elif choice == "10":
             print_system_deps()
         elif choice == "r":
             if ready:
@@ -1287,7 +1354,7 @@ def _main():
             print_summary(existing)
             break
         else:
-            print("\n    Pick a number 1-9, r to run, or q to quit.\n")
+            print("\n    Pick a number 1-10, r to run, or q to quit.\n")
 
 
 if __name__ == "__main__":

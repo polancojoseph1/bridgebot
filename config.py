@@ -90,6 +90,9 @@ USER_NAME: str = os.environ.get("USER_NAME", "")
 # Chrome extension (Claude only)
 CHROME_ENABLED: bool = os.environ.get("CHROME_ENABLED", "false").lower() in ("true", "1", "yes")
 
+# Playwright browser automation — enables /screenshot and /browse commands
+PLAYWRIGHT_ENABLED: bool = os.environ.get("PLAYWRIGHT_ENABLED", "true").lower() in ("true", "1", "yes")
+
 # Image generation (requires GEMINI_API_KEY)
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 
@@ -133,6 +136,16 @@ def _auto_detect():
         BOT_EMOJI = defaults.get("bot_emoji", "")
 
 _auto_detect()
+
+
+# === Display Preferences (defaults; overridden per-user via /show and /hide commands) ===
+DISPLAY_SHOW_TOOLS: bool = os.environ.get("DISPLAY_SHOW_TOOLS", "true").lower() == "true"
+DISPLAY_SHOW_THOUGHTS: bool = os.environ.get("DISPLAY_SHOW_THOUGHTS", "true").lower() == "true"
+
+# === Collab (federated peer networking) ===
+COLLAB_ENABLED: bool = os.environ.get("COLLAB_ENABLED", "true").lower() in ("true", "1", "yes")
+COLLAB_INSTANCE_NAME: str = os.environ.get("COLLAB_INSTANCE_NAME", "jefe")
+COLLAB_TOKEN: str = os.environ.get("COLLAB_TOKEN", "")  # inbound auth token for this instance
 
 
 def validate_config() -> list[str]:

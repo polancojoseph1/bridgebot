@@ -375,6 +375,80 @@ def get_last_agent_response(agent_id: str) -> str | None:
         return None
 
 
+async def search_shared(query: str, limit: int = 5) -> list[dict]:
+    """Search only the Shared/ memory collection for friend-tier collab peers.
+
+    Uses (or creates) a ChromaDB collection named "collab_shared" populated from
+    MEMORY_DIR/Shared/ markdown and text files.
+
+    Returns a list of {content, metadata, score} dicts.
+    """
+    shared_dir = MEMORY_BASE / "Shared"
+
+    # Lazy-build the collection if it doesn't exist yet
+    col_name = "collab_shared"
+    if col_name not in _agent_collections:
+        try:
+            import chromadb
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            collection = client.get_or_create_collection(
+                name=col_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            _agent_collections[col_name] = collection
+
+            # Index any .md / .txt files found in Shared/
+            if shared_dir.exists():
+                import hashlib as _hashlib
+                indexed = 0
+                for fpath in shared_dir.rglob("*"):
+                    if fpath.suffix.lower() not in (".md", ".txt"):
+                        continue
+                    try:
+                        text = fpath.read_text(encoding="utf-8", errors="replace")
+                        if not text.strip():
+                            continue
+                        doc_id = "shared:" + _hashlib.sha256(str(fpath).encode()).hexdigest()[:20]
+                        collection.upsert(
+                            ids=[doc_id],
+                            documents=[text[:4000]],
+                            metadatas=[{"source": str(fpath), "collection": "shared"}],
+                        )
+                        indexed += 1
+                    except Exception as _e:
+                        logger.debug("Could not index shared file %s: %s", fpath, _e)
+                logger.info("collab_shared: indexed %d files from %s", indexed, shared_dir)
+        except Exception as e:
+            logger.error("Failed to initialise collab_shared collection: %s", e)
+            return []
+
+    collection = _agent_collections.get(col_name)
+    if collection is None or collection.count() == 0:
+        return []
+
+    try:
+        results = collection.query(
+            query_texts=[query],
+            n_results=min(limit, collection.count()),
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception as e:
+        logger.error("search_shared query failed: %s", e)
+        return []
+
+    docs = results.get("documents", [[]])[0]
+    metas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    output = []
+    for doc, meta, dist in zip(docs, metas, distances):
+        # Convert cosine distance to a similarity-ish score (lower distance = higher score)
+        score = round(max(0.0, 1.0 - dist), 4)
+        output.append({"content": doc, "metadata": meta, "score": score})
+
+    return output
+
+
 def get_agent_graph_summary(agent_id: str) -> str:
     """Return a human-readable summary of this agent's graph knowledge."""
     conn = _get_kuzu_conn()

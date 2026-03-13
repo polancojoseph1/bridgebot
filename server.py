@@ -18,14 +18,21 @@ from pydantic import BaseModel
 import health
 from config import (
     ALLOWED_USER_ID, ALLOWED_USER_IDS, USER_NAMES, HOST, PORT, VOICE_MAX_LENGTH, WEBHOOK_URL,
-    CLI_RUNNER, BOT_NAME, BOT_EMOJI, MEMORY_DIR,
+    TELEGRAM_BOT_TOKEN, CLI_RUNNER, BOT_NAME, BOT_EMOJI, MEMORY_DIR,
     is_cli_available, validate_config, logger,
+    COLLAB_ENABLED,
 )
 from runners import create_runner
 from telegram_handler import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client, register_bot_commands
 from image_handler import generate_image
+try:
+    import playwright_handler
+    _playwright_available = True
+except ImportError:
+    _playwright_available = False
 from voice_handler import download_voice, transcribe_audio, text_to_speech, cleanup_file
 import memory_handler
+import display_prefs
 import task_handler
 import daily_report
 from instance_manager import InstanceManager, Instance
@@ -501,6 +508,8 @@ async def lifespan(application: FastAPI):
         ("imagine",   "Generate an image from prompt"),
         ("voice",     "Toggle voice replies mode"),
         # Browser & Tools
+        ("screenshot", "Screenshot a URL and send the image"),
+        ("browse",    "Extract readable text from a URL"),
         ("chrome",    "Toggle Chrome browser integration"),
         ("model",     "Switch AI model: sonnet|opus|haiku"),
         
@@ -543,6 +552,12 @@ async def lifespan(application: FastAPI):
     asyncio.create_task(_notify_startup_background())
     if _crashed:
         asyncio.create_task(_restore_sessions_after_crash())
+    # Start borrow session timeout checker
+    if COLLAB_ENABLED and collab_borrow is not None:
+        asyncio.create_task(collab_borrow.timeout_checker(
+            instances,
+            notify_fn=lambda msg: send_message(ALLOWED_USER_ID, msg),
+        ))
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
     # Stop all instance workers
@@ -555,17 +570,45 @@ async def lifespan(application: FastAPI):
                 pass
     await proactive_worker.stop()
     await close_client()
-    # Write clean shutdown flag so next boot knows this was intentional
-    try:
-        Path(_SHUTDOWN_FLAG).parent.mkdir(parents=True, exist_ok=True)
-        Path(_SHUTDOWN_FLAG).write_text(str(int(time.time())))
-        logger.info("Clean shutdown flag written")
-    except OSError as e:
-        logger.warning("Could not write shutdown flag: %s", e)
+    # Only write shutdown_clean flag if no sessions are mid-task.
+    # If there are unresolved sessions, skip the flag so the next boot
+    # triggers crash recovery and resumes in-flight work.
+    if _session_store.has_unresolved(CLI_RUNNER):
+        logger.info("Skipping shutdown_clean flag — unresolved sessions exist")
+    else:
+        try:
+            Path(_SHUTDOWN_FLAG).parent.mkdir(parents=True, exist_ok=True)
+            Path(_SHUTDOWN_FLAG).write_text(str(int(time.time())))
+            logger.info("Clean shutdown flag written")
+        except OSError as e:
+            logger.warning("Could not write shutdown flag: %s", e)
     logger.info("Bridge shut down")
 
 
 app = FastAPI(title="Telegram-Claude Bridge", lifespan=lifespan)
+
+# -- Collab router (federated peer networking) --------------------------------
+collab_borrow = None  # type: ignore
+collab_borrow_start = None  # type: ignore
+collab_borrow_message = None  # type: ignore
+collab_borrow_end = None  # type: ignore
+load_peers = None  # type: ignore
+
+if COLLAB_ENABLED:
+    try:
+        from collab import collab_router
+        from collab import borrow as collab_borrow
+        from collab.client import borrow_start as collab_borrow_start, borrow_message as collab_borrow_message, borrow_end as collab_borrow_end
+        from collab.config import load_peers
+        app.include_router(collab_router)
+        logger.info("Collab module loaded and router mounted at /collab")
+    except Exception as _collab_err:
+        collab_borrow = None  # type: ignore
+        collab_borrow_start = None  # type: ignore
+        collab_borrow_message = None  # type: ignore
+        collab_borrow_end = None  # type: ignore
+        load_peers = None  # type: ignore
+        logger.warning("Collab module failed to load (non-fatal): %s", _collab_err)
 
 
 @app.get("/health")
@@ -936,6 +979,26 @@ async def _extract_and_send_media(chat_id: int, text: str) -> list[str]:
 
 
 async def _process_message(chat_id: int, text: str, voice_reply: bool = False, instance=None, user_id: int = 0) -> None:
+    # Check if the user is currently in a borrow session — proxy their message to the peer
+    if COLLAB_ENABLED and collab_borrow is not None:
+        borrow_info = collab_borrow.is_borrowing(chat_id)
+        if borrow_info:
+            try:
+                peers = load_peers() if load_peers else {}
+                peer = peers.get(borrow_info.peer_name)
+                if peer and collab_borrow_message is not None:
+                    response = await collab_borrow_message(peer, borrow_info.session_id, text)
+                    labeled = f"[{borrow_info.label}]\n{response}"
+                    await send_message(chat_id, labeled, format_markdown=True)
+                    return
+                else:
+                    await send_message(chat_id, f"Borrow session error: peer '{borrow_info.peer_name}' not found. Use /return to disconnect.")
+                    return
+            except Exception as e:
+                logger.error(f"Borrow proxy error: {e}")
+                await send_message(chat_id, f"Borrow session error: {e}. Use /return to disconnect.")
+                return
+
     inst = instance or instances.active
     proc_owner_id = 0 if user_id == ALLOWED_USER_ID else user_id
     thinking_msg_id = await send_message(chat_id, _label(inst, "\U0001f9e0 Thinking...", proc_owner_id, show_emoji=False), format_markdown=True)
@@ -951,12 +1014,18 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
     else:
         memory_context = await memory_handler.search_memory(text, user_id=user_id)
 
+    _prefs = display_prefs.get_display_prefs(user_id)
+
     async def on_progress(progress_text: str):
         if progress_text.startswith("<blockquote"):
+            if not _prefs["show_thoughts"]:
+                return  # user doesn't want to see thoughts
             # HTML thinking block — send with HTML parse mode, minimal instance label
             inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
+            if not _prefs["show_tools"]:
+                return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     # --- Session store: mark this instance as actively processing ---
@@ -1070,11 +1139,17 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
 
     start = time.time()
 
+    _prefs = display_prefs.get_display_prefs(user_id)
+
     async def on_progress(progress_text: str):
         if progress_text.startswith("<blockquote"):
+            if not _prefs["show_thoughts"]:
+                return  # user doesn't want to see thoughts
             inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
+            if not _prefs["show_tools"]:
+                return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     sender_name = USER_NAMES.get(user_id, "") if user_id else ""
@@ -1133,11 +1208,17 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
 
     memory_context = await memory_handler.search_memory(raw_prompt, user_id=user_id)
 
+    _prefs = display_prefs.get_display_prefs(user_id)
+
     async def on_progress(progress_text: str):
         if progress_text.startswith("<blockquote"):
+            if not _prefs["show_thoughts"]:
+                return  # user doesn't want to see thoughts
             inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
+            if not _prefs["show_tools"]:
+                return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     response = await runner.run(prompt, on_progress=on_progress, memory_context=memory_context, instance=inst)
@@ -1186,6 +1267,40 @@ async def _process_image_generation(chat_id: int, prompt: str) -> None:
                 pass
 
 
+async def _process_screenshot(chat_id: int, url: str) -> None:
+    """Take a Playwright screenshot of url and send it as a photo."""
+    await send_message(chat_id, f"\U0001f4f8 Taking screenshot of {url}...")
+    png_path = None
+    try:
+        png_path = await playwright_handler.screenshot(url)
+        sent = await send_photo(chat_id, png_path, caption=url[:200])
+        if not sent:
+            await send_message(chat_id, "\u274c Failed to send screenshot.")
+    except Exception as e:
+        logger.error("Screenshot failed for %s: %s", url, e)
+        await send_message(chat_id, f"\u274c Screenshot failed: {e}")
+    finally:
+        if png_path:
+            try:
+                os.remove(png_path)
+            except OSError:
+                pass
+
+
+async def _process_browse(chat_id: int, url: str) -> None:
+    """Fetch readable text from url using Playwright and send as message."""
+    await send_message(chat_id, f"\U0001f310 Fetching {url}...")
+    try:
+        text = await playwright_handler.get_page_text(url)
+        if not text.strip():
+            await send_message(chat_id, "\u274c Page returned no readable text.")
+        else:
+            await send_message(chat_id, text, format_markdown=True)
+    except Exception as e:
+        logger.error("Browse failed for %s: %s", url, e)
+        await send_message(chat_id, f"\u274c Browse failed: {e}")
+
+
 async def _send_with_voice(chat_id: int, response: str) -> None:
     """Send a response as both voice and text. Falls back to text-only if TTS fails or text is too long."""
     # Always send text version
@@ -1209,10 +1324,20 @@ async def _send_with_voice(chat_id: int, response: str) -> None:
 
 
 async def _delayed_restart() -> None:
-    """Wait briefly so the webhook response reaches Telegram, then restart."""
+    """Wait briefly so the webhook response reaches Telegram, then restart.
+
+    We deliberately skip runner.kill_all() and close_client() here — os.execv
+    replaces the process instantly, so all tasks and connections die with it.
+    Calling kill_all first would let worker tasks race to mark_resolved(),
+    preventing crash recovery from resuming in-flight sessions.
+    """
     await asyncio.sleep(1)
-    await runner.kill_all()
-    await close_client()
+    # Remove shutdown_clean flag so the new boot detects a "crash" and runs
+    # _restore_sessions_after_crash() to resume in-flight work.
+    try:
+        os.remove(_SHUTDOWN_FLAG)
+    except OSError:
+        pass
     logger.info("Server restart requested via /server")
     os.execv(
         sys.executable,
@@ -1239,6 +1364,8 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "and reply with both text and voice.\n\n"
             "Commands:\n"
             "/imagine &lt;prompt&gt; \u2014 Generate an image\n"
+            "/screenshot &lt;url&gt; \u2014 Screenshot a URL\n"
+            "/browse &lt;url&gt; \u2014 Extract text from a URL\n"
             "/stop \u2014 Stop current task & clear queue\n"
             "/kill \u2014 Force-kill all Claude processes\n"
             "/new \u2014 Start a new conversation\n"
@@ -1303,6 +1430,27 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             runner.chrome_enabled = not runner.chrome_enabled
         status = "ON" if getattr(runner, 'chrome_enabled', False) else "OFF"
         await send_message(chat_id, f"\U0001f310 Chrome browser integration: {status}")
+
+    elif cmd in ("/show", "/hide"):
+        sub = text.split(maxsplit=1)[1].lower().strip() if len(text.split()) > 1 else ""
+        if sub == "code":
+            prefs = display_prefs.set_display_prefs(user_id, show_tools=(cmd == "/show"))
+            await send_message(chat_id, "Tool indicators on \u26a1" if prefs["show_tools"] else "Tool indicators off")
+        elif sub == "thoughts":
+            prefs = display_prefs.set_display_prefs(user_id, show_thoughts=(cmd == "/show"))
+            await send_message(chat_id, "Thinking blocks on \U0001f4ad" if prefs["show_thoughts"] else "Thinking blocks off")
+        elif sub == "both":
+            val = (cmd == "/show")
+            display_prefs.set_display_prefs(user_id, show_tools=val, show_thoughts=val)
+            await send_message(chat_id, "Showing everything \u26a1\U0001f4ad" if val else "Clean output \u2014 just final answers")
+        else:
+            await send_message(chat_id, f"Usage: {cmd} code | thoughts | both")
+
+    elif cmd == "/display":
+        prefs = display_prefs.get_display_prefs(user_id)
+        tools_status = "on" if prefs["show_tools"] else "off"
+        thoughts_status = "on" if prefs["show_thoughts"] else "off"
+        await send_message(chat_id, f"Current display settings:\n\u26a1 Tool indicators: {tools_status}\n\U0001f4ad Thoughts: {thoughts_status}")
 
     elif cmd == "/schedule":
         arg = text[len("/schedule"):].strip()
@@ -1434,6 +1582,9 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "**Available Commands:**\n\n"
             "**\U0001f3a8 Image Generation**\n"
             "/imagine <prompt> \u2014 Generate an image\n\n"
+            "**\U0001f310 Browser Automation (Playwright)**\n"
+            "/screenshot <url> \u2014 Take a screenshot of any URL\n"
+            "/browse <url> \u2014 Extract readable text from any URL\n\n"
             "**\U0001f50d Research & Intel**\n"
             "**\U0001f916 Orchestration**\n"
             "/orch <task> \u2014 Break task into parallel agents, synthesize results\n\n"
@@ -1477,6 +1628,10 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/kill \u2014 Force-kill all Claude processes across all instances\n"
             f"/chrome \u2014 Toggle Chrome browser [{chrome_status}]\n"
             f"/model sonnet|opus \u2014 Switch model for active instance [{(active.model.split('-')[1] if '-' in active.model else active.model).capitalize()}]\n\n"
+            "**\U0001f441\ufe0f Display**\n"
+            "/display \u2014 Show current display settings\n"
+            "/show code | thoughts | both \u2014 Turn on tool indicators / thinking blocks\n"
+            "/hide code | thoughts | both \u2014 Turn off tool indicators / thinking blocks\n\n"
             f"**\U0001f9e0 Memory & Tasks** [memory: {memory_status} | voice TTS: {ffmpeg_status}]\n"
             "/remember <text> \u2014 Save to memory\n"
             "/task \u2014 View/manage task list\n"
@@ -2196,6 +2351,280 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                 await send_message(chat_id, result, format_markdown=True)
             asyncio.create_task(_run_orch())
 
+    elif cmd == "/imagine":
+        prompt = text[len("/imagine"):].strip()
+        if not prompt:
+            await send_message(chat_id, "Usage: /imagine <prompt>\nExample: /imagine a cat riding a skateboard")
+        else:
+            asyncio.create_task(_process_image_generation(chat_id, prompt))
+
+    elif cmd == "/screenshot":
+        from config import PLAYWRIGHT_ENABLED
+        url = text[len("/screenshot"):].strip()
+        if not url:
+            await send_message(chat_id, "Usage: /screenshot <url>\nExample: /screenshot https://example.com")
+        elif not _playwright_available or not PLAYWRIGHT_ENABLED:
+            await send_message(chat_id, "\u274c Playwright not available. Run: pip install playwright && playwright install chromium")
+        else:
+            asyncio.create_task(_process_screenshot(chat_id, url))
+
+    elif cmd == "/browse":
+        from config import PLAYWRIGHT_ENABLED
+        url = text[len("/browse"):].strip()
+        if not url:
+            await send_message(chat_id, "Usage: /browse <url>\nExample: /browse https://news.ycombinator.com")
+        elif not _playwright_available or not PLAYWRIGHT_ENABLED:
+            await send_message(chat_id, "\u274c Playwright not available. Run: pip install playwright && playwright install chromium")
+        else:
+            asyncio.create_task(_process_browse(chat_id, url))
+
+    elif cmd == "/collab":
+        if not COLLAB_ENABLED:
+            await send_message(chat_id, "Collab is disabled. Set COLLAB_ENABLED=true to enable.")
+            return
+
+        parts = text.split(maxsplit=2)
+        sub = parts[1].lower() if len(parts) > 1 else ""
+        arg = parts[2] if len(parts) > 2 else ""
+
+        try:
+            from collab.config import load_peers, add_peer, remove_peer, COLLAB_INSTANCE_NAME
+            from collab import client as collab_client
+            from collab.feed import get_feed
+            import secrets as _secrets
+        except Exception as _e:
+            await send_message(chat_id, f"Collab module error: {_e}")
+            return
+
+        if not sub or sub == "help":
+            await send_message(
+                chat_id,
+                "<b>Collab — Federated Peer Network</b>\n\n"
+                "<b>/collab peers</b> — Show all known peers and online status\n"
+                "<b>/collab add &lt;name&gt; &lt;url&gt; &lt;tier&gt;</b> — Add a peer (generates token)\n"
+                "  Tiers: family | friend | acquaintance\n"
+                "<b>/collab remove &lt;name&gt;</b> — Remove a peer\n"
+                "<b>/collab feed</b> — Show combined activity feed\n"
+                "<b>/collab ask &lt;peer&gt; &lt;task&gt;</b> — Delegate a task to a peer\n"
+                "<b>/collab broadcast &lt;msg&gt;</b> — Broadcast message to all peers\n",
+                parse_mode="HTML",
+            )
+
+        elif sub == "peers":
+            peers = load_peers()
+            if not peers:
+                await send_message(chat_id, "No peers configured. Use /collab add to add one.")
+                return
+            await send_message(chat_id, "Checking peer status...")
+            lines = [f"<b>Collab Peers ({len(peers)})</b>\n"]
+            for name, peer in peers.items():
+                profile = await collab_client.fetch_profile(peer)
+                online = "online" if profile else "offline"
+                bots = ", ".join(profile.get("bots", [])) if profile else peer.get("bots", [])
+                if isinstance(bots, list):
+                    bots = ", ".join(bots)
+                lines.append(
+                    f"<b>{name}</b> [{peer.get('tier', '?')}] — {online}\n"
+                    f"  {peer.get('url', '')}\n"
+                    f"  bots: {bots or 'unknown'}"
+                )
+            await send_message(chat_id, "\n\n".join(lines), parse_mode="HTML")
+
+        elif sub == "add":
+            # /collab add <name> <url> <tier>
+            add_parts = arg.split(maxsplit=2)
+            if len(add_parts) < 3:
+                await send_message(
+                    chat_id,
+                    "Usage: /collab add &lt;name&gt; &lt;url&gt; &lt;tier&gt;\n"
+                    "Tiers: family | friend | acquaintance\n"
+                    "Example: /collab add diony https://dionys-machine.ts.net family",
+                    parse_mode="HTML",
+                )
+                return
+            peer_name, peer_url, peer_tier = add_parts[0], add_parts[1], add_parts[2].lower()
+            if peer_tier not in ("family", "friend", "acquaintance"):
+                await send_message(chat_id, f"Invalid tier '{peer_tier}'. Must be: family, friend, or acquaintance")
+                return
+            # Generate a random token for this peer to send to us
+            new_token = _secrets.token_urlsafe(32)
+            add_peer(peer_name, peer_url, peer_tier, new_token)
+            await send_message(
+                chat_id,
+                f"<b>Peer '{peer_name}' added</b> (tier: {peer_tier})\n\n"
+                f"Share this token with <b>{peer_name}</b> — they must set it as their outbound token for your instance:\n\n"
+                f"<code>{new_token}</code>",
+                parse_mode="HTML",
+            )
+
+        elif sub == "remove":
+            peer_name = arg.strip()
+            if not peer_name:
+                await send_message(chat_id, "Usage: /collab remove &lt;name&gt;", parse_mode="HTML")
+                return
+            ok = remove_peer(peer_name)
+            if ok:
+                await send_message(chat_id, f"Peer '{peer_name}' removed.")
+            else:
+                await send_message(chat_id, f"Peer '{peer_name}' not found.")
+
+        elif sub == "feed":
+            # Show combined feed: local + all peers
+            local_events = await get_feed(limit=10)
+            lines = [f"<b>Activity Feed</b> (local: {COLLAB_INSTANCE_NAME})\n"]
+            for ev in reversed(local_events):
+                import datetime as _dt
+                ts = _dt.datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%H:%M")
+                peer_tag = f" ← {ev['peer_name']}" if ev.get("peer_name") else ""
+                lines.append(f"[{ts}] <b>{ev.get('action', '?')}</b>{peer_tag}: {ev.get('summary', '')[:100]}")
+            peers = load_peers()
+            for peer_name, peer in peers.items():
+                peer_events = await collab_client.fetch_peer_feed(peer)
+                if peer_events:
+                    lines.append(f"\n<b>{peer_name}</b>:")
+                    for ev in peer_events[-5:]:
+                        import datetime as _dt2
+                        ts = _dt2.datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%H:%M")
+                        lines.append(f"  [{ts}] {ev.get('action', '?')}: {ev.get('summary', '')[:80]}")
+            if len(lines) <= 1:
+                lines.append("No events yet.")
+            await send_message(chat_id, "\n".join(lines), parse_mode="HTML")
+
+        elif sub == "ask":
+            # /collab ask <peer> <task>
+            ask_parts = arg.split(maxsplit=1)
+            if len(ask_parts) < 2:
+                await send_message(chat_id, "Usage: /collab ask &lt;peer&gt; &lt;task&gt;", parse_mode="HTML")
+                return
+            target_peer_name, task = ask_parts[0], ask_parts[1]
+            peers = load_peers()
+            if target_peer_name not in peers:
+                await send_message(chat_id, f"Peer '{target_peer_name}' not found. Use /collab peers to see available peers.")
+                return
+            await send_message(chat_id, f"Delegating task to {target_peer_name}...")
+            result = await collab_client.delegate_task(peers[target_peer_name], task)
+            await send_message(
+                chat_id,
+                f"<b>Response from {target_peer_name}:</b>\n\n{result}",
+                parse_mode="HTML",
+                format_markdown=True,
+            )
+
+        elif sub == "broadcast":
+            if not arg:
+                await send_message(chat_id, "Usage: /collab broadcast &lt;message&gt;", parse_mode="HTML")
+                return
+            peers = load_peers()
+            if not peers:
+                await send_message(chat_id, "No peers configured.")
+                return
+            sent = 0
+            failed = 0
+            for peer_name, peer in peers.items():
+                ok = await collab_client.broadcast_to_peer(peer, arg, from_name=COLLAB_INSTANCE_NAME)
+                if ok:
+                    sent += 1
+                else:
+                    failed += 1
+            await send_message(
+                chat_id,
+                f"Broadcast sent to {sent} peer(s)." + (f" {failed} failed." if failed else ""),
+            )
+
+        else:
+            await send_message(chat_id, f"Unknown collab subcommand: {sub}\nTry /collab help")
+
+    elif cmd == "/borrow":
+        if not COLLAB_ENABLED or collab_borrow is None:
+            await send_message(chat_id, "Collab is disabled. Set COLLAB_ENABLED=true to enable.")
+            return
+
+        _borrow_args = text[len("/borrow"):].strip()
+        parts = _borrow_args.split() if _borrow_args else []
+        if not parts:
+            await send_message(
+                chat_id,
+                "<b>Usage:</b> /borrow &lt;peer&gt; [bot]\n"
+                "Example: /borrow diony\n"
+                "Example: /borrow diony gemini\n\n"
+                "Use /return to disconnect.",
+                parse_mode="HTML",
+            )
+            return
+
+        peer_name = parts[0]
+        bot = parts[1] if len(parts) > 1 else None
+
+        # Check if already borrowing
+        if collab_borrow.is_borrowing(chat_id):
+            await send_message(chat_id, "You're already borrowing a bot. Use /return first.")
+            return
+
+        # Look up peer
+        peers = load_peers() if load_peers else {}
+        if peer_name not in peers:
+            await send_message(chat_id, f"Peer '{peer_name}' not found. Use /collab peers to see available peers.")
+            return
+
+        peer = peers[peer_name]
+        await send_message(chat_id, f"Connecting to {peer_name}'s bot...")
+
+        try:
+            result = await collab_borrow_start(peer, bot)
+        except Exception as _e:
+            await send_message(chat_id, f"Failed to connect to {peer_name}: {_e}")
+            return
+
+        if not result:
+            await send_message(chat_id, f"Could not start borrow session with {peer_name}. Peer may be offline or the bot is not available.")
+            return
+
+        collab_borrow.start_borrow(
+            chat_id,
+            peer_name,
+            result["session_id"],
+            result["bot"],
+            result["label"],
+        )
+
+        await send_message(
+            chat_id,
+            f"Connected to <b>{result['label']}</b>\n"
+            f"Every message you send will go to <b>{peer_name}</b>'s bot.\n"
+            f"Say /return to disconnect.",
+            parse_mode="HTML",
+        )
+
+    elif cmd == "/return":
+        if not COLLAB_ENABLED or collab_borrow is None:
+            await send_message(chat_id, "Collab is disabled. Set COLLAB_ENABLED=true to enable.")
+            return
+
+        borrow_info = collab_borrow.is_borrowing(chat_id)
+        if not borrow_info:
+            await send_message(chat_id, "You're not borrowing any bot.")
+            return
+
+        # Look up peer
+        peers = load_peers() if load_peers else {}
+        peer = peers.get(borrow_info.peer_name)
+
+        if peer and collab_borrow_end is not None:
+            try:
+                await collab_borrow_end(peer, borrow_info.session_id)
+            except Exception as _e:
+                logger.error("borrow_end call failed for peer %s: %s", borrow_info.peer_name, _e)
+                # Still disconnect locally even if remote call fails
+
+        collab_borrow.end_borrow(chat_id)
+        duration = int((time.time() - borrow_info.started_at) / 60)
+
+        await send_message(
+            chat_id,
+            f"Disconnected from <b>{borrow_info.label}</b>. "
+            f"Session lasted {duration} min. Back to your Claude.",
+            parse_mode="HTML",
+        )
 
     else:
         await send_message(chat_id, f"Unknown command: {cmd}\nTry /help")

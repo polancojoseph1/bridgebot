@@ -68,6 +68,7 @@ class SessionStore:
 
                 CREATE INDEX IF NOT EXISTS idx_messages_lookup
                 ON messages(chat_id, bot_name, instance_number, created_at);
+
             """)
             # Subprocess survival tracking (added in v2)
             for col_sql in [
@@ -156,6 +157,15 @@ class SessionStore:
     def mark_resolved(self, chat_id: int, bot_name: str, instance_number: int) -> None:
         """Mark this instance as done (task finished or /stop called)."""
         self.upsert_session(chat_id, bot_name, instance_number, status="resolved")
+
+    def has_unresolved(self, bot_name: str) -> bool:
+        """Return True if any session for this bot is still unresolved."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sessions WHERE bot_name=? AND status='unresolved' LIMIT 1",
+                (bot_name,),
+            ).fetchone()
+        return row is not None
 
     def update_session_id(
         self, chat_id: int, bot_name: str, instance_number: int, session_id: str
