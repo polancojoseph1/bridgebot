@@ -271,6 +271,7 @@ async def download_photo(file_id: str) -> str:
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix="tg_photo_")
     tmp.write(resp.content)
     tmp.close()
+    os.chmod(tmp.name, 0o600)
     logger.info("Downloaded photo to %s (%d bytes)", tmp.name, len(resp.content))
     return tmp.name
 

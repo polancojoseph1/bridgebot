@@ -62,6 +62,7 @@ async def generate_image(prompt: str) -> tuple[str, str]:
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix="gemini_img_")
             tmp.write(image_bytes)
             tmp.close()
+            os.chmod(tmp.name, 0o600)
             image_path = tmp.name
             logger.info("Generated image saved to %s (%d bytes)", image_path, len(image_bytes))
 

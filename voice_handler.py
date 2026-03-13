@@ -46,6 +46,7 @@ async def download_voice(file_id: str) -> str:
         ext = os.path.splitext(file_path)[1] or ".ogg"
         fd, tmp_path = tempfile.mkstemp(suffix=ext)
         try:
+            os.chmod(tmp_path, 0o600)
             os.write(fd, resp.content)
         finally:
             os.close(fd)
@@ -132,8 +133,10 @@ async def text_to_speech_local(text: str) -> str:
 
     fd_aiff, aiff_path = tempfile.mkstemp(suffix=".aiff")
     os.close(fd_aiff)
+    os.chmod(aiff_path, 0o600)
     fd_ogg, ogg_path = tempfile.mkstemp(suffix=".ogg")
     os.close(fd_ogg)
+    os.chmod(ogg_path, 0o600)
 
     try:
         # macOS say: instant local synthesis
@@ -176,8 +179,10 @@ async def text_to_speech(text: str) -> str:
 
     fd_mp3, mp3_path = tempfile.mkstemp(suffix=".mp3")
     os.close(fd_mp3)
+    os.chmod(mp3_path, 0o600)
     fd_ogg, ogg_path = tempfile.mkstemp(suffix=".ogg")
     os.close(fd_ogg)
+    os.chmod(ogg_path, 0o600)
 
     try:
         # Generate MP3 with Edge TTS

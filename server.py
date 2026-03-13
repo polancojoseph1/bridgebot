@@ -768,7 +768,11 @@ async def process_update(body: dict) -> None:
         file_id = document["file_id"]
         file_name = os.path.basename(document.get("file_name", f"file_{file_id[:8]}"))
         save_dir = os.path.join(MEMORY_DIR, "uploads")
+        os.makedirs(save_dir, exist_ok=True)
         dest_path = os.path.join(save_dir, file_name)
+        if not os.path.realpath(dest_path).startswith(os.path.realpath(save_dir)):
+            logger.warning("Upload path escape blocked: %s", dest_path)
+            return
         health.record_message()
         asyncio.create_task(_handle_document_upload(chat_id, file_id, dest_path, file_name))
         return

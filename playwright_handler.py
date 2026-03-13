@@ -31,6 +31,7 @@ async def screenshot(url: str, full_page: bool = False) -> str:
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png", prefix="pw_shot_")
     tmp.close()
     path = tmp.name
+    os.chmod(path, 0o600)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)

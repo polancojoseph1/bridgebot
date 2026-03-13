@@ -73,6 +73,12 @@ BOT_EMOJI: str = os.environ.get("BOT_EMOJI", "")
 HOST: str = os.environ.get("HOST", "0.0.0.0")
 PORT: int = int(os.environ.get("PORT", "8588"))
 WEBHOOK_URL: str = os.environ.get("WEBHOOK_URL", "")
+if WEBHOOK_URL and not WEBHOOK_URL.startswith("https://"):
+    logger.warning(
+        "WEBHOOK_URL is not HTTPS (%s). Collab tokens will be transmitted in plaintext. "
+        "Set WEBHOOK_URL to an https:// address to secure collab endpoints.",
+        WEBHOOK_URL,
+    )
 
 # === Optional Features ===
 MEMORY_ENABLED: bool = os.environ.get("MEMORY_ENABLED", "true").lower() in ("true", "1", "yes")
