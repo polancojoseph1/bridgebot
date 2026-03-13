@@ -95,7 +95,7 @@ instances = InstanceManager()
 # -- Session store (crash recovery) ------------------------------------------
 import session_store as _ss_mod
 _session_store = _ss_mod.SessionStore()
-_SHUTDOWN_FLAG = os.path.join(os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.tg-cli-bridge")), "pids", f"{CLI_RUNNER}.shutdown_clean")
+_SHUTDOWN_FLAG = os.path.join(os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.bridgebot")), "pids", f"{CLI_RUNNER}.shutdown_clean")
 
 # -- Message types -----------------------------------------------------------
 
@@ -1642,7 +1642,9 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/server \u2014 Restart bridge server\n"
             "/help \u2014 Show this help\n\n"
             "Messages are queued per instance (up to 10 each). "
-            "Different instances process concurrently."
+            "Different instances process concurrently.\n\n"
+            "*Any unrecognized /command is forwarded directly to the active runner* "
+            "(e.g. Claude skills like /security-review, /commit, /remote-control)."
         )
         await send_message(chat_id, help_text, format_markdown=True)
 
@@ -2627,4 +2629,21 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         )
 
     else:
-        await send_message(chat_id, f"Unknown command: {cmd}\nTry /help")
+        # Unknown command — forward to active runner as a regular message.
+        # This lets Claude skills (/security-review, /commit, etc.) and
+        # any other runner-native slash commands work from Telegram.
+        async def _passthrough():
+            try:
+                target_instance = await _resolve_target_instance_async(text, user_id)
+                await _enqueue_message(QueuedMessage(
+                    chat_id=chat_id,
+                    msg_type=MessageType.TEXT,
+                    text=text,
+                    voice_reply=_voice_reply_mode,
+                    instance_id=target_instance.id,
+                    user_id=user_id,
+                ))
+            except Exception as _e:
+                logger.error("Unknown command passthrough failed: %s", _e)
+                await send_message(chat_id, f"Unknown command: {cmd}\nTry /help")
+        asyncio.create_task(_passthrough())
