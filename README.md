@@ -1,4 +1,4 @@
-# tg-cli-bridge
+# bridgebot
 
 **Talk to any AI CLI through Telegram.** One codebase, plug-and-play CLI adapters.
 
