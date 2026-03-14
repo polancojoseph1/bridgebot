@@ -32,6 +32,7 @@ except ImportError:
     _playwright_available = False
 from voice_handler import download_voice, transcribe_audio, text_to_speech, cleanup_file
 import memory_handler
+import display_prefs
 import task_handler
 import daily_report
 from instance_manager import InstanceManager, Instance
@@ -1079,11 +1080,18 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
     else:
         memory_context = await memory_handler.search_memory(text, user_id=user_id)
 
+    _prefs = display_prefs.get_display_prefs(user_id)
+
     async def on_progress(progress_text: str):
         if progress_text.startswith("<blockquote"):
+            if not _prefs["show_thoughts"]:
+                return  # user doesn't want to see thoughts
+            # HTML thinking block — send with HTML parse mode, minimal instance label
             inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
+            if not _prefs["show_tools"]:
+                return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     # --- Session store: mark this instance as actively processing ---
@@ -1197,11 +1205,17 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
 
     start = time.time()
 
+    _prefs = display_prefs.get_display_prefs(user_id)
+
     async def on_progress(progress_text: str):
         if progress_text.startswith("<blockquote"):
+            if not _prefs["show_thoughts"]:
+                return  # user doesn't want to see thoughts
             inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
+            if not _prefs["show_tools"]:
+                return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     sender_name = USER_NAMES.get(user_id, "") if user_id else ""
@@ -1260,11 +1274,17 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
 
     memory_context = await memory_handler.search_memory(raw_prompt, user_id=user_id)
 
+    _prefs = display_prefs.get_display_prefs(user_id)
+
     async def on_progress(progress_text: str):
         if progress_text.startswith("<blockquote"):
+            if not _prefs["show_thoughts"]:
+                return  # user doesn't want to see thoughts
             inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
+            if not _prefs["show_tools"]:
+                return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
     response = await runner.run(prompt, on_progress=on_progress, memory_context=memory_context, instance=inst)
@@ -1468,6 +1488,21 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         _session_store.mark_resolved(chat_id, CLI_RUNNER, surviving.id)
         await send_message(chat_id, f"\U0001f9f9 Cleared {count} instance{'s' if count != 1 else ''}. Fresh start.")
 
+    elif cmd in ("/show", "/hide"):
+        sub = text.split(maxsplit=1)[1].lower().strip() if len(text.split()) > 1 else ""
+        if sub == "code":
+            prefs = display_prefs.set_display_prefs(user_id, show_tools=(cmd == "/show"))
+            await send_message(chat_id, "Tool indicators on \u26a1" if prefs["show_tools"] else "Tool indicators off")
+        elif sub == "thoughts":
+            prefs = display_prefs.set_display_prefs(user_id, show_thoughts=(cmd == "/show"))
+            await send_message(chat_id, "Thinking blocks on \U0001f4ad" if prefs["show_thoughts"] else "Thinking blocks off")
+        elif sub == "both":
+            val = (cmd == "/show")
+            display_prefs.set_display_prefs(user_id, show_tools=val, show_thoughts=val)
+            await send_message(chat_id, "Showing everything \u26a1\U0001f4ad" if val else "Clean output \u2014 just final answers")
+        else:
+            await send_message(chat_id, f"Usage: {cmd} code | thoughts | both")
+
     elif cmd == "/new":
         inst = instances.get_active_for(owner_id)
         inst.clear_queue()
@@ -1499,6 +1534,9 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/new \u2014 Reset conversation for the active instance\n"
             "/server \u2014 Restart bridge server\n"
             f"/model sonnet|opus \u2014 Switch model [{(active.model.split('-')[1] if '-' in active.model else active.model).capitalize()}]\n\n"
+            "**Display**\n"
+            "/show code | thoughts | both\n"
+            "/hide code | thoughts | both\n\n"
             "**Instances**\n"
             f"_{inst_info}_\n"
             "/list \u2014 Show all instances\n"
@@ -1523,7 +1561,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/borrow <peer> [bot] \u2014 Route messages to peer's bot\n"
             "/return \u2014 Disconnect from borrowed bot\n\n"
             "/help \u2014 Show this\n\n"
-            "_Any unrecognized /command is forwarded to the active runner (Claude skills, etc.)_"
+            "_Unrecognized commands are passed through to the active runner as plain text._"
         )
         await send_message(chat_id, help_text, format_markdown=True)
 
