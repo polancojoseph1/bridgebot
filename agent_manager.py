@@ -672,12 +672,7 @@ async def _run_post_task_critique(
                 "[critique:pass] agent=%s elapsed=%ss — no violations, approved outcome recorded",
                 agent_id, elapsed,
             )
-            await send_fn(
-                chat_id,
-                f"✅ <b>{agent_name}</b> — passed all critique checks ({elapsed}s). No violations.",
-                parse_mode="HTML",
-            )
-            return
+            return  # PASS is silent — no Telegram ping needed
 
         # Log every violation individually
         logger.info(
