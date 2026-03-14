@@ -1,7 +1,7 @@
 """Unified configuration for bridgebot.
 
 All settings are loaded from environment variables (via .env file).
-Users select their CLI runner with CLI_RUNNER=claude|gemini|codex|generic.
+Users select their CLI runner with CLI_RUNNER=claude|gemini|codex|qwen|opencode|generic|free.
 """
 
 import os
@@ -54,10 +54,11 @@ CLI_SYSTEM_PROMPT: str = os.environ.get("CLI_SYSTEM_PROMPT", "")
 # Default model name passed to --model flag when creating agents.
 # Override with DEFAULT_AGENT_MODEL env var. Falls back to CLI_RUNNER-specific defaults.
 _RUNNER_DEFAULT_MODELS: dict[str, str] = {
-    "claude": "claude-sonnet-4-6",
-    "gemini": "gemini-2.5-pro",
-    "codex":  "gpt-4o",
-    "qwen":   "qwen2.5-coder:7b",
+    "claude":   "claude-sonnet-4-6",
+    "gemini":   "gemini-2.5-pro",
+    "codex":    "gpt-4o",
+    "qwen":     "qwen2.5-coder:7b",
+    "opencode": "opencode/mimo-v2-flash-free",
 }
 DEFAULT_AGENT_MODEL: str = os.environ.get(
     "DEFAULT_AGENT_MODEL",
@@ -124,10 +125,12 @@ CALL_MAX_SPEECH_DURATION: int = int(os.environ.get("CALL_MAX_SPEECH_DURATION", "
 # === Auto-detection ===
 
 _CLI_DEFAULTS: dict[str, dict] = {
-    "claude": {"command": "claude", "bot_name": "Claude", "bot_emoji": "🤖"},
-    "gemini": {"command": "gemini", "bot_name": "Gemini", "bot_emoji": "✨"},
-    "codex":  {"command": "codex",  "bot_name": "Codex",  "bot_emoji": "⚡"},
-    "qwen":   {"command": "qwen",   "bot_name": "Qwen",   "bot_emoji": "🔮"},
+    "claude":   {"command": "claude",   "bot_name": "Claude",   "bot_emoji": "🤖"},
+    "gemini":   {"command": "gemini",   "bot_name": "Gemini",   "bot_emoji": "✨"},
+    "codex":    {"command": "codex",    "bot_name": "Codex",    "bot_emoji": "⚡"},
+    "qwen":     {"command": "qwen",     "bot_name": "Qwen",     "bot_emoji": "🔮"},
+    "opencode": {"command": "opencode", "bot_name": "OpenCode", "bot_emoji": "🔓"},
+    "free":     {"command": "",         "bot_name": "Free",     "bot_emoji": "🆓"},
 }
 
 def _auto_detect():
@@ -161,9 +164,9 @@ def validate_config() -> list[str]:
         errors.append("TELEGRAM_BOT_TOKEN is not set")
     if not ALLOWED_USER_IDS:
         errors.append("ALLOWED_USER_ID is not set")
-    if CLI_RUNNER not in ("claude", "gemini", "codex", "qwen", "generic"):
-        errors.append(f"CLI_RUNNER='{CLI_RUNNER}' — must be claude, gemini, codex, qwen, or generic")
-    if CLI_RUNNER != "generic" and not is_cli_available():
+    if CLI_RUNNER not in ("claude", "gemini", "codex", "qwen", "opencode", "generic", "free"):
+        errors.append(f"CLI_RUNNER='{CLI_RUNNER}' — must be claude, gemini, codex, qwen, opencode, generic, or free")
+    if CLI_RUNNER not in ("generic", "free") and not is_cli_available():
         errors.append(
             f"CLI binary '{CLI_COMMAND}' not found in PATH — "
             f"install it before starting the bot"

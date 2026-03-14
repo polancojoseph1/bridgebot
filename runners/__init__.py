@@ -25,5 +25,11 @@ def create_runner() -> RunnerBase:
     elif CLI_RUNNER == "generic":
         from runners.generic import GenericRunner
         return GenericRunner()
+    elif CLI_RUNNER == "opencode":
+        from runners.opencode import OpenCodeRunner
+        return OpenCodeRunner()
+    elif CLI_RUNNER == "free":
+        from runners.free import FreeRunner
+        return FreeRunner()
     else:
-        raise ValueError(f"Unknown CLI_RUNNER: '{CLI_RUNNER}'. Use: claude, gemini, codex, qwen, or generic")
+        raise ValueError(f"Unknown CLI_RUNNER: '{CLI_RUNNER}'. Use: claude, gemini, codex, qwen, opencode, generic, or free")

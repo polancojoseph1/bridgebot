@@ -109,7 +109,160 @@ CLI_OPTIONS = {
         "install": "npm install -g @qwen-code/qwen-code",
         "url": "https://github.com/QwenLM/qwen-code",
     },
+    "opencode": {
+        "command": "opencode",
+        "label": "OpenCode",
+        "company": "OpenCode AI",
+        "description": "AI coding agent with free models — local tool access",
+        "install": "npm install -g opencode-ai",
+        "url": "https://github.com/nicholasgriffintn/opencode",
+    },
 }
+
+# Ordered list of free API providers — easiest to hardest for a brand new user
+FREE_PROVIDERS = [
+    {
+        "name":    "Groq",
+        "env_key": "GROQ_API_KEY",
+        "why":     "Simplest signup of all 10. Email + password, key is ready in 60 seconds.",
+        "steps": [
+            "Go to:  https://console.groq.com",
+            "Click 'Sign Up' — enter your email and a password",
+            "Verify your email (check your inbox for a confirmation link)",
+            "Click 'API Keys' in the left sidebar",
+            "Click 'Create API Key', give it any name, copy it, paste below",
+        ],
+        "free_tier": "~14,400 requests/day — the most generous free tier of all 10",
+    },
+    {
+        "name":    "Cohere",
+        "env_key": "COHERE_API_KEY",
+        "why":     "Signs you up AND gives you a key automatically — no extra steps.",
+        "steps": [
+            "Go to:  https://dashboard.cohere.com",
+            "Click 'Sign Up' — email or Google login",
+            "Your default API key is already on the dashboard when you land",
+            "Copy it and paste it below — that's it",
+        ],
+        "free_tier": "Free trial key — generous limits for personal use, no credit card",
+    },
+    {
+        "name":    "OpenRouter",
+        "env_key": "OPENROUTER_API_KEY",
+        "why":     "One login gets you access to dozens of free AI models at once.",
+        "steps": [
+            "Go to:  https://openrouter.ai/keys",
+            "Click 'Sign In' — use Google or GitHub (no new password needed)",
+            "Click 'Create Key', give it any name",
+            "Copy the key and paste it below",
+        ],
+        "free_tier": "Multiple completely free models — no credits or payment required",
+    },
+    {
+        "name":    "Google Gemini",
+        "env_key": "GEMINI_API_KEY",
+        "why":     "If you have a Gmail or Google account, this is 3 clicks.",
+        "steps": [
+            "Go to:  https://aistudio.google.com/app/apikey",
+            "Sign in with your Google account (Gmail works)",
+            "Click 'Create API key'",
+            "Copy the key and paste it below",
+        ],
+        "free_tier": "1,500 requests/day, 15 per minute — no credit card needed",
+    },
+    {
+        "name":    "Together AI",
+        "env_key": "TOGETHER_API_KEY",
+        "why":     "Email or Google signup, free credits added automatically on signup.",
+        "steps": [
+            "Go to:  https://api.together.xyz",
+            "Click 'Sign Up' — email or Google login",
+            "Go to 'Settings' in the top right",
+            "Click 'API Keys', copy your key, paste it below",
+        ],
+        "free_tier": "Free credits on signup + permanently free Llama models",
+    },
+    {
+        "name":    "Mistral",
+        "env_key": "MISTRAL_API_KEY",
+        "why":     "Straightforward signup. Clean dashboard, key in under 2 minutes.",
+        "steps": [
+            "Go to:  https://console.mistral.ai",
+            "Click 'Sign Up' — email or Google",
+            "Go to 'API Keys' in the left menu",
+            "Click 'Create new key', copy it, paste it below",
+        ],
+        "free_tier": "Free tier on Mistral Small — no credit card required",
+    },
+    {
+        "name":    "Cerebras",
+        "env_key": "CEREBRAS_API_KEY",
+        "why":     "Email signup, ultra-fast AI (~2,000 tokens/sec). Worth the 2 minutes.",
+        "steps": [
+            "Go to:  https://cloud.cerebras.ai",
+            "Click 'Sign Up' — enter your email and a password",
+            "Verify your email, then log in",
+            "Go to 'API Keys' and click 'Create new key'",
+            "Copy the key and paste it below",
+        ],
+        "free_tier": "Free tier — one of the fastest AI providers in the world",
+    },
+    {
+        "name":    "Hugging Face",
+        "env_key": "HF_API_KEY",
+        "why":     "Hundreds of free models. Slightly more steps to create a token.",
+        "steps": [
+            "Go to:  https://huggingface.co and create a free account",
+            "Once logged in, go to:  https://huggingface.co/settings/tokens",
+            "Click 'New token'",
+            "Give it any name, set the role to 'Read', click 'Generate'",
+            "Copy the token and paste it below",
+        ],
+        "free_tier": "Free inference API — access to hundreds of open-source models",
+    },
+    {
+        "name":    "SambaNova",
+        "env_key": "SAMBANOVA_API_KEY",
+        "why":     "Fast free tier. Less known but easy signup — 400 free requests/day.",
+        "steps": [
+            "Go to:  https://cloud.sambanova.ai",
+            "Click 'Sign Up' — enter your email and a password",
+            "Verify your email, then log in",
+            "Find the 'API Key' section in your dashboard",
+            "Copy the key and paste it below",
+        ],
+        "free_tier": "400 requests/day free on fast Llama models",
+    },
+    {
+        "name":    "NVIDIA NIM",
+        "env_key": "NVIDIA_API_KEY",
+        "why":     "More steps than the others, but NVIDIA's AI is powerful and worth it.",
+        "steps": [
+            "Go to:  https://build.nvidia.com",
+            "Click 'Login' in the top right",
+            "Create an NVIDIA account if you don't have one (email signup)",
+            "Once logged in, click on any model (e.g. 'Llama 3.3 70B')",
+            "Click 'Get API Key' on the right side of the page",
+            "Copy the key and paste it below",
+        ],
+        "free_tier": "Free credits on signup — good for ~1,000 requests",
+    },
+    {
+        "name":    "Qwen Coder (CLI)",
+        "env_key": None,  # No API key — uses CLI binary + qwen.ai OAuth
+        "why":     "1,000 free requests/day. No API key — logs in via your browser once.",
+        "steps": [
+            "You need Node.js installed (check: type 'node --version' in your terminal)",
+            "Install:  npm install -g @qwen-code/qwen-code",
+            "Run once:  qwen",
+            "It will open your browser to log in with a qwen.ai account",
+            "Sign up at qwen.ai (Alibaba account — email or Google)",
+            "After login succeeds, come back here — that's it, no key to copy",
+        ],
+        "free_tier": "1,000 free requests/day — auto-detected if installed, no key needed",
+        "is_cli": True,  # Wizard handles this differently — checks binary, not API key
+    },
+]
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +359,7 @@ def is_required_complete(existing: dict) -> bool:
     return (
         not _is_placeholder(token)
         and not _is_placeholder(uid)
-        and bool(runner) and runner in ("claude", "gemini", "codex", "qwen", "generic")
+        and bool(runner) and runner in ("claude", "gemini", "codex", "qwen", "generic", "free")
     )
 
 
@@ -578,6 +731,129 @@ def step_user_id(existing: dict):
 # Step 3: AI CLI Selection
 # ---------------------------------------------------------------------------
 
+def step_free_api_keys(existing: dict):
+    """Walk the user through getting free API keys from each provider."""
+    print()
+    print("=" * 60)
+    print("  Free Bot (OpenCode) — API Key Setup")
+    print("=" * 60)
+    print()
+    print("  How Free Bot (OpenCode) works:")
+    print("  Your bot rotates across up to 11 FREE AI providers.")
+    print("  When one hits its limit, it instantly switches to the next.")
+    print("  The more providers you add, the harder it is to ever hit a wall.")
+    print()
+    print("  Powered by OpenCode (code tasks) + OpenRouter (model routing).")
+    print()
+    print("  GOAL: Add as many as possible. Each one takes ~2 minutes.")
+    print("  You only need ONE to get started — but more = better.")
+    print()
+
+    # Count how many are already set (API key providers + CLI providers that are installed)
+    already_set = []
+    for p in FREE_PROVIDERS:
+        if p.get("is_cli"):
+            if shutil.which("qwen"):
+                already_set.append(p)
+        elif existing.get(p["env_key"], "").strip() and not _is_placeholder(existing.get(p["env_key"], "")):
+            already_set.append(p)
+
+    if already_set:
+        print(f"  You already have {len(already_set)} provider(s) configured:")
+        for p in already_set:
+            if p.get("is_cli"):
+                print(f"    {p['name']}: installed ✓")
+            else:
+                key_val = existing.get(p["env_key"], "")
+                print(f"    {p['name']}: {mask_token(key_val)}")
+        print()
+
+    total = len(FREE_PROVIDERS)
+    added = 0
+
+    for i, provider in enumerate(FREE_PROVIDERS, 1):
+        is_cli = provider.get("is_cli", False)
+        env_key = provider.get("env_key")
+
+        if is_cli:
+            already_configured = shutil.which("qwen") is not None
+        else:
+            current_val = existing.get(env_key, "").strip()
+            already_configured = bool(current_val) and not _is_placeholder(current_val)
+
+        print(f"  [{i}/{total}] {provider['name']}")
+        print(f"  Free tier: {provider['free_tier']}")
+        print(f"  Why easy: {provider['why']}")
+        print()
+
+        if already_configured:
+            if is_cli:
+                print("  Already installed: qwen CLI found ✓")
+            else:
+                print(f"  Already set: {mask_token(existing.get(env_key, ''))}")
+            if not prompt_yes_no("  Re-configure?", default=False):
+                print()
+                added += 1
+                continue
+
+        print("  How to set it up:")
+        for step_num, step_text in enumerate(provider["steps"], 1):
+            print(f"    {step_num}. {step_text}")
+        print()
+
+        # Offer to skip
+        action_label = "Set up Qwen CLI" if is_cli else "Add this key"
+        do_it = prompt_yes_no(f"  {action_label} now?", default=True)
+        if not do_it:
+            print(f"  Skipping {provider['name']} — you can re-run setup later to add it.")
+            print()
+            continue
+
+        if is_cli:
+            # For CLI providers: no key to save, just confirm they've done the steps
+            print()
+            print("  Follow the steps above in your terminal, then come back.")
+            input("  Press Enter when done (or Enter to skip): ")
+            if shutil.which("qwen"):
+                print("  Qwen CLI detected — you're all set!")
+                added += 1
+            else:
+                print("  Qwen CLI not found in PATH yet. Skipping for now.")
+                print("  You can re-run setup after installing it.")
+            print()
+            continue
+
+        # Get the API key
+        while True:
+            raw = input(f"  Paste your {provider['name']} API key (or press Enter to skip): ").strip()
+            if not raw:
+                print(f"  Skipping {provider['name']}.")
+                break
+            # Basic sanity check — most keys are 20+ chars
+            if len(raw) < 10:
+                print("  That looks too short. Try again or press Enter to skip.")
+                continue
+            save_value(env_key, raw)
+            existing[env_key] = raw
+            print("  Saved!")
+            added += 1
+            break
+        print()
+
+    print("=" * 60)
+    print(f"  Done! {added} provider(s) configured.")
+    print()
+    if added == 0:
+        print("  WARNING: No keys added. Free mode won't work without at least one key.")
+        print("  Re-run setup anytime to add keys: python setup_wizard.py")
+    elif added < 4:
+        print("  Tip: The more keys you add, the harder to hit limits.")
+        print("  Consider adding more providers when you have a few minutes.")
+    else:
+        print(f"  With {added} providers rotating, you're basically limitless.")
+    print()
+
+
 def step_cli_runner(existing: dict):
     print()
     print("=" * 46)
@@ -609,6 +885,24 @@ def step_cli_runner(existing: dict):
         print()
         options.append(key)
 
+    # Free mode option
+    free_num = len(options) + 1
+    current_marker = "  <-- current" if current_runner == "free" else ""
+    free_key_count = sum(
+        1 for p in FREE_PROVIDERS
+        if (p.get("is_cli") and shutil.which("qwen"))
+        or (not p.get("is_cli") and existing.get(p["env_key"], "").strip()
+            and not _is_placeholder(existing.get(p["env_key"], "")))
+    )
+    free_status = f"{free_key_count}/11 providers configured" if free_key_count else "no providers yet"
+    print(f"  {free_num}. Free Bot (OpenCode)  (Recommended for new users)")
+    print("     Rotates across 11 free AI providers automatically.")
+    print("     No paid subscription needed — works with free API keys.")
+    print("     Powered by OpenCode + OpenRouter.")
+    print(f"     Status: {free_status}{current_marker}")
+    print()
+    options.append("free")
+
     # Generic option
     generic_num = len(options) + 1
     current_marker = "  <-- current" if current_runner == "generic" else ""
@@ -636,6 +930,13 @@ def step_cli_runner(existing: dict):
         choice_num = default_num
 
     chosen = options[choice_num - 1]
+
+    # Handle free mode — walk through API key setup
+    if chosen == "free":
+        save_value("CLI_RUNNER", "free")
+        existing["CLI_RUNNER"] = "free"
+        step_free_api_keys(existing)
+        return
 
     # Handle generic — ask for the binary command
     if chosen == "generic":

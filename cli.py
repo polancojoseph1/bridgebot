@@ -46,6 +46,8 @@ PLIST_TEMPLATE = """\
         <string>{homebrew_prefix}/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>PYTHONPATH</key>
         <string>{project_dir}/.venv/lib/python{pyver}/site-packages</string>
+        <key>ENV_FILE</key>
+        <string>{env_file}</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -79,6 +81,7 @@ RestartSec=10
 Environment=HOME={home}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONPATH={project_dir}/.venv/lib/python{pyver}/site-packages
+Environment=ENV_FILE={env_file}
 StandardOutput=append:{log}
 StandardError=append:{err}
 
@@ -119,7 +122,7 @@ def _venv_python(project_dir: Path) -> str:
 # macOS install
 # ---------------------------------------------------------------------------
 
-def _install_macos(name: str, port: str, project_dir: Path) -> None:
+def _install_macos(name: str, port: str, project_dir: Path, env_file: str = "") -> None:
     python = _venv_python(project_dir)
     home = str(Path.home())
     pyver = _python_version()
@@ -134,11 +137,15 @@ def _install_macos(name: str, port: str, project_dir: Path) -> None:
     log_path = logs_dir / f"{name}.log"
     err_path = logs_dir / f"{name}.err.log"
 
+    # Default ENV_FILE to the .env in the project dir if not specified
+    resolved_env_file = env_file or str(project_dir / ".env")
+
     plist_path.write_text(PLIST_TEMPLATE.format(
         label=label, python=python, port=port,
         project_dir=str(project_dir), home=home, pyver=pyver,
         log=str(log_path), err=str(err_path),
         homebrew_prefix=_homebrew_prefix(),
+        env_file=resolved_env_file,
     ))
     print(f"Wrote: {plist_path}")
 
@@ -182,7 +189,7 @@ def _list_macos() -> None:
 # Linux install
 # ---------------------------------------------------------------------------
 
-def _install_linux(name: str, port: str, project_dir: Path) -> None:
+def _install_linux(name: str, port: str, project_dir: Path, env_file: str = "") -> None:
     python = _venv_python(project_dir)
     home = str(Path.home())
     pyver = _python_version()
@@ -197,10 +204,13 @@ def _install_linux(name: str, port: str, project_dir: Path) -> None:
     log_path = logs_dir / f"{name}.log"
     err_path = logs_dir / f"{name}.err.log"
 
+    resolved_env_file = env_file or str(project_dir / ".env")
+
     unit_path.write_text(SYSTEMD_TEMPLATE.format(
         name=name, python=python, port=port,
         project_dir=str(project_dir), home=home, pyver=pyver,
         log=str(log_path), err=str(err_path),
+        env_file=resolved_env_file,
     ))
     print(f"Wrote: {unit_path}")
 
@@ -246,20 +256,31 @@ def _task_name(name: str) -> str:
     return f"bridgebot-{name}"
 
 
-def _install_windows(name: str, port: str, project_dir: Path) -> None:
+def _install_windows(name: str, port: str, project_dir: Path, env_file: str = "") -> None:
     python = _venv_python(project_dir)
     # Use pythonw.exe to suppress the console window on startup
     pythonw = Path(python).parent / "pythonw.exe"
     runner = str(pythonw) if pythonw.exists() else python
 
+    resolved_env_file = env_file or str(project_dir / ".env")
     task_name = _task_name(name)
-    args = f'-m uvicorn server:app --host 0.0.0.0 --port {port}'
 
-    # schtasks /Create — runs at logon, hidden, in the project directory
+    # Generate a .bat launcher so schtasks gets the correct working directory and ENV_FILE.
+    # schtasks /Create doesn't support setting a start directory directly, so we use a wrapper.
+    bat_path = project_dir / f"start-{name}.bat"
+    bat_path.write_text(
+        f'@echo off\n'
+        f'cd /d "{project_dir}"\n'
+        f'set ENV_FILE={resolved_env_file}\n'
+        f'"{runner}" -m uvicorn server:app --host 0.0.0.0 --port {port}\n'
+    )
+    print(f"Wrote launcher: {bat_path}")
+
+    # Point schtasks at the .bat file
     result = subprocess.run([
         "schtasks", "/Create", "/F",
         "/TN", task_name,
-        "/TR", f'"{runner}" {args}',
+        "/TR", f'"{bat_path}"',
         "/SC", "ONLOGON",
         "/RL", "HIGHEST",
         "/IT",           # only when user is logged in (interactive)
@@ -277,12 +298,12 @@ def _install_windows(name: str, port: str, project_dir: Path) -> None:
         print(f"To start:   schtasks /Run /TN {task_name}")
         print(f"To remove:  schtasks /Delete /F /TN {task_name}")
         print()
-        _print_nssm_tip(name, runner, args, project_dir)
+        _print_nssm_tip(name, runner, f'-m uvicorn server:app --host 0.0.0.0 --port {port}', project_dir)
     else:
         print(f"schtasks failed: {result.stderr.strip()}", file=sys.stderr)
         print("Falling back to manual instructions:")
-        print(f"  {runner} {args}")
-        print(f"  (run from: {project_dir})")
+        print(f"  Run: {bat_path}")
+        print(f"  Or start manually from {project_dir}: {runner} -m uvicorn server:app --port {port}")
 
 
 def _print_nssm_tip(name: str, runner: str, args: str, project_dir: Path) -> None:
@@ -342,12 +363,13 @@ def _list_windows() -> None:
 
 def cmd_install(args) -> None:
     project_dir = Path(__file__).parent.resolve()
+    env_file = getattr(args, "env_file", "") or ""
     if sys.platform == "darwin":
-        _install_macos(args.name, args.port, project_dir)
+        _install_macos(args.name, args.port, project_dir, env_file)
     elif sys.platform.startswith("linux"):
-        _install_linux(args.name, args.port, project_dir)
+        _install_linux(args.name, args.port, project_dir, env_file)
     else:
-        _install_windows(args.name, args.port, project_dir)
+        _install_windows(args.name, args.port, project_dir, env_file)
 
 
 def cmd_uninstall(args) -> None:
@@ -376,8 +398,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     install_p = sub.add_parser("install", help="Install a named bot instance as a background service")
-    install_p.add_argument("--name", required=True, help="Instance name (e.g. claude, gemini)")
+    install_p.add_argument("--name", required=True, help="Instance name (e.g. claude, gemini, free)")
     install_p.add_argument("--port", default=os.environ.get("PORT", "8588"), help="Port to run uvicorn on (default: PORT env var or 8588)")
+    install_p.add_argument("--env-file", default="", dest="env_file", help="Path to .env file (default: .env in project dir)")
 
     uninstall_p = sub.add_parser("uninstall", help="Remove a named service instance")
     uninstall_p.add_argument("--name", required=True, help="Instance name to remove")
