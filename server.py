@@ -12,19 +12,23 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 import health
 from config import (
     ALLOWED_USER_ID, ALLOWED_USER_IDS, USER_NAMES, HOST, PORT, VOICE_MAX_LENGTH, WEBHOOK_URL,
     TELEGRAM_BOT_TOKEN, CLI_RUNNER, BOT_NAME, BOT_EMOJI, MEMORY_DIR,
     is_cli_available, validate_config, logger,
-    COLLAB_ENABLED,
+    COLLAB_ENABLED, INTERNAL_API_KEY,
 )
 from runners import create_runner
-from telegram_handler import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client, register_bot_commands
+from telegram_handler import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client, register_bot_commands, send_inline_keyboard, answer_callback_query
+import user_access
 from image_handler import generate_image
 try:
     import playwright_handler
@@ -605,6 +609,9 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="Telegram-Claude Bridge", lifespan=lifespan)
+_limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = _limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # -- Collab router (federated peer networking) --------------------------------
 collab_borrow = None  # type: ignore
@@ -646,9 +653,13 @@ class DirectQueryRequest(BaseModel):
 
 
 @app.post("/query")
-async def direct_query(req: DirectQueryRequest):
+@_limiter.limit("30/minute")
+async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str = Header(default="")):
     """Stateless AI query endpoint for automation tools (n8n, scripts).
-    Runs Claude Haiku with no session/memory overhead. Returns raw text response."""
+    Requires X-API-Key header matching INTERNAL_API_KEY."""
+    if not INTERNAL_API_KEY or not x_api_key or x_api_key != INTERNAL_API_KEY:
+        logger.warning("Rejected /query — missing or invalid X-API-Key")
+        return JSONResponse(status_code=401, content={"ok": False, "error": "Unauthorized"})
     try:
         response = await runner.run_query(req.prompt, timeout_secs=req.timeout_secs)
         return {"ok": True, "response": response}
@@ -695,8 +706,10 @@ async def direct_query(req: DirectQueryRequest):
 
 
 @app.get("/prompts")
-async def get_prompts(name: Optional[str] = None):
-    """Return all prompts from the PROMPTS dictionary, or a single prompt by ?name=key."""
+async def get_prompts(x_api_key: str = Header(default=""), name: Optional[str] = None):
+    """Return prompts — requires X-API-Key."""
+    if not INTERNAL_API_KEY or x_api_key != INTERNAL_API_KEY:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     if name:
         if name not in PROMPTS:
             return JSONResponse(status_code=404, content={"error": f"Prompt '{name}' not found", "available": list(PROMPTS.keys())})
@@ -706,6 +719,42 @@ async def get_prompts(name: Optional[str] = None):
 
 
 
+
+
+async def _handle_callback_query(cq: dict) -> None:
+    """Handle inline keyboard button presses (owner Approve/Deny for access requests)."""
+    cq_id = cq.get("id", "")
+    data = cq.get("data", "")
+    from_id = cq.get("from", {}).get("id", 0)
+    message = cq.get("message", {})
+    owner_chat_id = message.get("chat", {}).get("id", ALLOWED_USER_ID)
+
+    # Only the bot owner can approve/deny
+    if from_id != ALLOWED_USER_ID:
+        await answer_callback_query(cq_id, "Not authorized.", show_alert=True)
+        return
+
+    if data.startswith("approve_user:"):
+        target_id = int(data.split(":", 1)[1])
+        name = user_access.approve_user(target_id)
+        await answer_callback_query(cq_id, f"✅ Approved {name}")
+        await send_message(owner_chat_id, f"✅ Approved <b>{name}</b> (ID: <code>{target_id}</code>)", parse_mode="HTML")
+        # Notify the approved user
+        pending = user_access.get_pending_chat_id(target_id)
+        if pending:
+            await send_message(pending, "✅ Your access has been approved! You can now use the bot.")
+
+    elif data.startswith("deny_user:"):
+        target_id = int(data.split(":", 1)[1])
+        name = user_access.deny_user(target_id)
+        await answer_callback_query(cq_id, f"❌ Denied {name}")
+        await send_message(owner_chat_id, f"❌ Denied <b>{name}</b> (ID: <code>{target_id}</code>)", parse_mode="HTML")
+        # Notify the denied user
+        pending = user_access.get_pending_chat_id(target_id)
+        if pending:
+            await send_message(pending, "❌ Access request denied.")
+    else:
+        await answer_callback_query(cq_id)
 
 
 async def process_update(body: dict) -> None:
@@ -719,6 +768,12 @@ async def process_update(body: dict) -> None:
         if len(_processed_updates) > 1000:
             oldest = sorted(_processed_updates)[:500]
             _processed_updates.difference_update(oldest)
+
+    # Handle inline keyboard button presses (Approve/Deny from owner)
+    callback_query = body.get("callback_query")
+    if callback_query:
+        await _handle_callback_query(callback_query)
+        return
 
     message = body.get("message")
     if not message:
@@ -734,10 +789,29 @@ async def process_update(body: dict) -> None:
 
     logger.info("Incoming | user=%d chat=%d text=%s voice=%s", user_id, chat_id, text[:80], bool(voice or audio))
 
-    # Auth check
-    if user_id not in ALLOWED_USER_IDS:
+    # Auth check — check dynamic allowlist (env + SQLite-approved)
+    if not user_access.is_allowed(user_id):
         logger.warning("Unauthorized user %d", user_id)
-        await send_message(chat_id, "Unauthorized.")
+        if user_access.is_denied(user_id):
+            await send_message(chat_id, "Access denied.")
+            return
+        if not user_access.is_pending(user_id):
+            first_name = message.get("from", {}).get("first_name", "")
+            username = message.get("from", {}).get("username", "")
+            user_access.request_access(user_id, first_name, username, chat_id)
+            # Notify owner with Approve/Deny buttons
+            owner_chat_id = ALLOWED_USER_ID
+            display = f"{first_name} (@{username})" if username else first_name or str(user_id)
+            buttons = [[
+                {"text": "✅ Approve", "callback_data": f"approve_user:{user_id}"},
+                {"text": "❌ Deny",    "callback_data": f"deny_user:{user_id}"},
+            ]]
+            await send_inline_keyboard(
+                owner_chat_id,
+                f"🔔 <b>Access request</b>\n<b>{display}</b> (ID: <code>{user_id}</code>) wants to use this bot.",
+                buttons,
+            )
+        await send_message(chat_id, "Access request sent. Waiting for approval.")
         return
 
     # Normalize command to lowercase (preserve args) so all commands are case-insensitive
@@ -893,7 +967,14 @@ async def _run_polling() -> None:
 
 
 @app.post("/webhook")
+@_limiter.limit("120/minute")
 async def webhook(request: Request):
+    from telegram_handler import _webhook_secret_token
+    expected = _webhook_secret_token(TELEGRAM_BOT_TOKEN)
+    incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if incoming != expected:
+        logger.warning("Webhook rejected — invalid secret token")
+        return JSONResponse(status_code=401, content={"ok": False})
     body = await request.json()
     await process_update(body)
     return JSONResponse({"ok": True})
@@ -916,14 +997,16 @@ async def trigger_webhook(trigger_id: str, request: Request):
 
     raw_body = await request.body()
 
-    # Validate HMAC secret if configured (GitHub-compatible)
+    # HMAC secret is mandatory — triggers without a secret are rejected
     secret = trigger.config.get("secret", "")
-    if secret:
-        sig_header = request.headers.get("X-Hub-Signature-256", "")
-        expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig_header, expected):
-            logger.warning("Trigger '%s': invalid signature", trigger_id)
-            return JSONResponse({"ok": False, "error": "invalid signature"}, status_code=401)
+    if not secret:
+        logger.warning("Trigger '%s': rejected — no secret configured", trigger_id)
+        return JSONResponse({"ok": False, "error": "trigger has no secret configured"}, status_code=401)
+    sig_header = request.headers.get("X-Hub-Signature-256", "")
+    expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig_header, expected):
+        logger.warning("Trigger '%s': invalid signature", trigger_id)
+        return JSONResponse({"ok": False, "error": "invalid signature"}, status_code=401)
 
     # Filter by GitHub event type if configured
     event_filter = trigger.config.get("event", "")
@@ -2163,6 +2246,73 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
         else:
             await send_message(chat_id, "Usage: `/trigger run <id>`", format_markdown=True)
+
+    elif cmd == "/users":
+        # Only owner can manage users
+        if user_id != ALLOWED_USER_ID:
+            await send_message(chat_id, "Only the bot owner can manage users.")
+            return
+        parts = text.split(maxsplit=2)
+        sub = parts[1].lower() if len(parts) > 1 else "list"
+
+        if sub == "list":
+            approved = user_access.list_approved()
+            if not approved:
+                await send_message(chat_id, "No dynamically approved users yet.")
+            else:
+                lines = ["<b>Approved users:</b>"]
+                for u in approved:
+                    display = u.get("first_name") or ""
+                    if u.get("username"):
+                        display += f" (@{u['username']})"
+                    display = display.strip() or str(u["user_id"])
+                    lines.append(f"  • <code>{u['user_id']}</code> — {display}")
+                await send_message(chat_id, "\n".join(lines), parse_mode="HTML")
+
+        elif sub == "revoke" and len(parts) > 2:
+            try:
+                target_id = int(parts[2])
+            except ValueError:
+                await send_message(chat_id, "Usage: /users revoke <user_id>")
+                return
+            removed = user_access.revoke_user(target_id)
+            if removed:
+                await send_message(chat_id, f"✅ Revoked access for <code>{target_id}</code>", parse_mode="HTML")
+            else:
+                await send_message(chat_id, f"User <code>{target_id}</code> not found or is a static user.", parse_mode="HTML")
+
+        elif sub == "pending":
+            # Show pending requests
+            with user_access._conn() as c:
+                rows = c.execute("SELECT * FROM pending_requests ORDER BY requested_at").fetchall()
+            if not rows:
+                await send_message(chat_id, "No pending access requests.")
+            else:
+                lines = ["<b>Pending requests:</b>"]
+                for r in rows:
+                    display = r["first_name"] or ""
+                    if r["username"]:
+                        display += f" (@{r['username']})"
+                    display = display.strip() or str(r["user_id"])
+                    buttons = [[
+                        {"text": "✅ Approve", "callback_data": f"approve_user:{r['user_id']}"},
+                        {"text": "❌ Deny",    "callback_data": f"deny_user:{r['user_id']}"},
+                    ]]
+                    await send_inline_keyboard(
+                        chat_id,
+                        f"<b>{display}</b> (ID: <code>{r['user_id']}</code>)",
+                        buttons,
+                    )
+
+        else:
+            await send_message(
+                chat_id,
+                "<b>/users</b> — Manage bot access\n"
+                "/users list — Show approved users\n"
+                "/users pending — Show pending requests\n"
+                "/users revoke &lt;id&gt; — Revoke access",
+                parse_mode="HTML",
+            )
 
     else:
         # Unknown command — forward to active runner as a regular message.

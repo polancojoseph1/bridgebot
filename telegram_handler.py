@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 import os
@@ -174,7 +175,15 @@ async def send_message(chat_id: int, text: str, format_markdown: bool = False, p
 
     for chunk in chunks:
         msg_id = await _send_single(client, chat_id, chunk, parse_mode=parse_mode)
-        if first_id is None:
+        if msg_id is None and parse_mode:
+            # Formatted send failed — wait briefly then retry as plain text (last resort)
+            await asyncio.sleep(1.0)
+            plain = strip_html_tags(chunk)
+            if plain.strip():
+                msg_id = await _send_single(client, chat_id, plain, retry=True, parse_mode=None)
+        if msg_id is None:
+            logger.error("Failed to deliver message chunk to chat %d (%d chars)", chat_id, len(chunk))
+        if first_id is None and msg_id is not None:
             first_id = msg_id
 
     return first_id
@@ -354,21 +363,29 @@ async def register_bot_commands(commands: list[tuple[str, str]]) -> bool:
     return False
 
 
+def _webhook_secret_token(bot_token: str) -> str:
+    """Derive a stable secret token from the bot token (SHA-256, first 32 hex chars).
+    Telegram requires: 1-256 chars, only a-z A-Z 0-9 _ -"""
+    import hashlib
+    return hashlib.sha256(bot_token.encode()).hexdigest()[:32]
+
+
 async def register_webhook(url: str) -> bool:
-    """Register a webhook URL with Telegram. Returns True on success."""
+    """Register a webhook URL with Telegram including a secret token. Returns True on success."""
     normalized_url = url.rstrip("/")
     if not normalized_url.endswith("/webhook"):
         normalized_url = f"{normalized_url}/webhook"
 
+    secret = _webhook_secret_token(TELEGRAM_BOT_TOKEN)
     client = await get_client()
     try:
         resp = await client.post(
             f"{TELEGRAM_API}/setWebhook",
-            json={"url": normalized_url},
+            json={"url": normalized_url, "secret_token": secret},
         )
         data = resp.json()
         if data.get("ok"):
-            logger.info("Webhook registered: %s", normalized_url)
+            logger.info("Webhook registered: %s (with secret token)", normalized_url)
             return True
         logger.error("Webhook registration failed: %s", data)
     except httpx.HTTPError as exc:
@@ -384,6 +401,42 @@ async def send_chat_action(chat_id: int, action: str) -> None:
         await client.post(url, json={"chat_id": chat_id, "action": action})
     except httpx.HTTPError:
         pass
+
+
+async def send_inline_keyboard(chat_id: int, text: str, buttons: list[list[dict]]) -> int | None:
+    """Send a message with an inline keyboard.
+
+    buttons is a list of rows, each row is a list of button dicts with
+    keys 'text' and 'callback_data'.
+    Returns the message_id on success, None on failure.
+    """
+    client = await get_client()
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "reply_markup": {"inline_keyboard": buttons},
+    }
+    try:
+        resp = await client.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+        if resp.status_code == 200:
+            return resp.json().get("result", {}).get("message_id")
+        logger.error("send_inline_keyboard error %d: %s", resp.status_code, resp.text)
+    except httpx.HTTPError as exc:
+        logger.error("send_inline_keyboard HTTP error: %s", exc)
+    return None
+
+
+async def answer_callback_query(callback_query_id: str, text: str = "", show_alert: bool = False) -> None:
+    """Acknowledge an inline keyboard button press."""
+    client = await get_client()
+    try:
+        await client.post(
+            f"{TELEGRAM_API}/answerCallbackQuery",
+            json={"callback_query_id": callback_query_id, "text": text, "show_alert": show_alert},
+        )
+    except httpx.HTTPError as exc:
+        logger.error("answerCallbackQuery HTTP error: %s", exc)
 
 
 async def delete_message(chat_id: int, message_id: int) -> bool:

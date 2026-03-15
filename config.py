@@ -75,9 +75,16 @@ HOST: str = os.environ.get("HOST", "0.0.0.0")
 PORT: int = int(os.environ.get("PORT", "8588"))
 WEBHOOK_URL: str = os.environ.get("WEBHOOK_URL", "")
 if WEBHOOK_URL and not WEBHOOK_URL.startswith("https://"):
+    _collab_token_set = bool(os.environ.get("COLLAB_TOKEN", ""))
+    if _collab_token_set:
+        raise ValueError(
+            f"WEBHOOK_URL is not HTTPS ({WEBHOOK_URL}) but COLLAB_TOKEN is set. "
+            "Collab tokens would be transmitted in plaintext. "
+            "Set WEBHOOK_URL to an https:// address or unset COLLAB_TOKEN."
+        )
     logger.warning(
-        "WEBHOOK_URL is not HTTPS (%s). Collab tokens will be transmitted in plaintext. "
-        "Set WEBHOOK_URL to an https:// address to secure collab endpoints.",
+        "WEBHOOK_URL is not HTTPS (%s). Set WEBHOOK_URL to an https:// address "
+        "before enabling collab (COLLAB_TOKEN).",
         WEBHOOK_URL,
     )
 
@@ -102,6 +109,9 @@ PLAYWRIGHT_ENABLED: bool = os.environ.get("PLAYWRIGHT_ENABLED", "true").lower() 
 
 # Image generation (requires GEMINI_API_KEY)
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+
+# Internal API key — required for /query and other direct HTTP endpoints (n8n, scripts)
+INTERNAL_API_KEY: str = os.environ.get("INTERNAL_API_KEY", "")
 
 # Voice settings
 WHISPER_MODEL: str = os.environ.get("WHISPER_MODEL", "base")
