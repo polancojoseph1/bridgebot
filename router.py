@@ -29,8 +29,12 @@ async def route_message(message: str, instances: list[dict]) -> int | None:
     if not instances or len(instances) < 2:
         return None
 
+    def _safe_title(t: str) -> str:
+        # Strip quotes and newlines to prevent prompt injection via instance names
+        return t.replace('"', '').replace("'", '').replace('\n', ' ').replace('\r', '')[:64]
+
     instance_list = "\n".join(
-        f"{inst['id']}. \"{inst['title']}\"" for inst in instances
+        f"{inst['id']}. \"{_safe_title(inst['title'])}\"" for inst in instances
     )
 
     prompt = (

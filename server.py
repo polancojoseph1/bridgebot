@@ -653,7 +653,7 @@ class DirectQueryRequest(BaseModel):
 
 
 @app.post("/query")
-@_limiter.limit("30/minute")
+@_limiter.limit("10/minute")
 async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str = Header(default="")):
     """Stateless AI query endpoint for automation tools (n8n, scripts).
     Requires X-API-Key header matching INTERNAL_API_KEY."""
@@ -735,21 +735,27 @@ async def _handle_callback_query(cq: dict) -> None:
         return
 
     if data.startswith("approve_user:"):
-        target_id = int(data.split(":", 1)[1])
+        try:
+            target_id = int(data.split(":", 1)[1])
+        except (ValueError, IndexError):
+            await answer_callback_query(cq_id, "Invalid request.", show_alert=True)
+            return
         name = user_access.approve_user(target_id)
         await answer_callback_query(cq_id, f"✅ Approved {name}")
         await send_message(owner_chat_id, f"✅ Approved <b>{name}</b> (ID: <code>{target_id}</code>)", parse_mode="HTML")
-        # Notify the approved user
         pending = user_access.get_pending_chat_id(target_id)
         if pending:
             await send_message(pending, "✅ Your access has been approved! You can now use the bot.")
 
     elif data.startswith("deny_user:"):
-        target_id = int(data.split(":", 1)[1])
+        try:
+            target_id = int(data.split(":", 1)[1])
+        except (ValueError, IndexError):
+            await answer_callback_query(cq_id, "Invalid request.", show_alert=True)
+            return
         name = user_access.deny_user(target_id)
         await answer_callback_query(cq_id, f"❌ Denied {name}")
         await send_message(owner_chat_id, f"❌ Denied <b>{name}</b> (ID: <code>{target_id}</code>)", parse_mode="HTML")
-        # Notify the denied user
         pending = user_access.get_pending_chat_id(target_id)
         if pending:
             await send_message(pending, "❌ Access request denied.")

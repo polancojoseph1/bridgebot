@@ -6,6 +6,7 @@ No session management, no streaming, plain text output.
 
 import asyncio
 import logging
+import re
 from typing import Callable, Awaitable
 
 from runners.base import RunnerBase
@@ -77,7 +78,10 @@ class GenericRunner(RunnerBase):
             return result
         err = stderr_data.decode(errors="replace").strip()
         if err:
-            return f"[stderr] {err}"
+            # Strip ANSI escape codes and control characters before returning
+            err = re.sub(r'\x1b\[[0-9;]*[mGKHF]', '', err)
+            err = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', err)
+            return f"[error] {err[:500]}"
         return "(no response)"
 
     async def run(
@@ -87,6 +91,8 @@ class GenericRunner(RunnerBase):
         on_progress: Callable[[str], Awaitable[None]] | None = None,
         image_path: str | None = None,
         memory_context: str = "",
+        on_subprocess_started: Callable[[int, str, str], None] | None = None,
+        chat_id: int = 0,
     ) -> str:
         """Run the generic CLI with the message as a single argument."""
         instance.was_stopped = False

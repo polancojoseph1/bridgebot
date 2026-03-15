@@ -172,7 +172,7 @@ class ClaudeRunner(RunnerBase):
                 prompt = f"Use the Read tool to view the image file at: {image_path}\n\nDescribe what you see in the image."
             cmd.append(prompt)
         else:
-            cmd.append(message)
+            cmd.append(message.replace("\x00", ""))
 
         log_path = self.make_log_path(self.name, chat_id, instance.id)
         log_start_offset = os.path.getsize(log_path) if os.path.exists(log_path) else 0
@@ -204,6 +204,7 @@ class ClaudeRunner(RunnerBase):
 
         final_result = ""
         _pending_text: str = ""
+        _got_result = False
         _usage = {"turn": {}, "context_window": 0, "cost": 0.0}
         _agent_calls: dict[str, dict] = {}
         _agent_counter = 0
@@ -222,7 +223,7 @@ class ClaudeRunner(RunnerBase):
             _pending_text = ""
 
         async def process_stream():
-            nonlocal final_result, _agent_counter, _pending_text
+            nonlocal final_result, _agent_counter, _pending_text, _got_result
             async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
@@ -246,7 +247,16 @@ class ClaudeRunner(RunnerBase):
                             tool_name = block.get("name", "")
                             tool_inp = block.get("input", {})
                             tool_id = block.get("id", "")
-                            if tool_name == "Agent":
+                            if tool_name in ("EnterPlanMode", "ExitPlanMode"):
+                                # Plan mode requires interactive approval — kill immediately
+                                # instead of waiting for the 30-min timeout
+                                try:
+                                    proc.kill()
+                                except ProcessLookupError:
+                                    pass
+                                self.new_session(instance)
+                                raise asyncio.CancelledError("plan_mode_detected")
+                            elif tool_name == "Agent":
                                 _agent_counter += 1
                                 desc = tool_inp.get("description", tool_inp.get("prompt", ""))[:100]
                                 _agent_calls[tool_id] = {"n": _agent_counter, "description": desc}
@@ -280,11 +290,28 @@ class ClaudeRunner(RunnerBase):
                     for model_data in data.get("modelUsage", {}).values():
                         _usage["context_window"] = model_data.get("contextWindow", 0)
                         break
+                    _got_result = True
+                    break  # Don't wait for subprocess exit — chrome keeps the pipe open
 
+            # Kill wrapper if still alive (chrome inherits stdout pipe, keeps it open)
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
             await proc.wait()
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
+        except asyncio.CancelledError as _ce:
+            if str(_ce) == "plan_mode_detected":
+                await proc.wait()
+                instance.process = None
+                instance.subprocess_pid = 0
+                instance.subprocess_log_file = ""
+                instance.subprocess_start_time = ""
+                return "\u26a0\ufe0f Plan mode is not supported in this context \u2014 session reset. Please resend your request."
+            raise
         except asyncio.TimeoutError:
             try:
                 proc.kill()
@@ -295,6 +322,7 @@ class ClaudeRunner(RunnerBase):
             instance.subprocess_pid = 0
             instance.subprocess_log_file = ""
             instance.subprocess_start_time = ""
+            self.new_session(instance)  # reset session so next call doesn't hit "already in use"
             return "\u23f0 Claude took too long to respond (timed out)."
 
         instance.process = None
@@ -306,7 +334,7 @@ class ClaudeRunner(RunnerBase):
             instance.subprocess_start_time = ""
             return "\U0001f6d1 Stopped."
 
-        if proc.returncode == 0:
+        if proc.returncode == 0 or _got_result:
             instance.session_started = True
             if _usage["context_window"]:
                 instance.context_window = _usage["context_window"]
@@ -322,7 +350,7 @@ class ClaudeRunner(RunnerBase):
             instance.subprocess_log_file = ""
             instance.subprocess_start_time = ""
 
-        if proc.returncode != 0:
+        if proc.returncode != 0 and not _got_result:
             logger.error("claude exited %d (see log: %s)", proc.returncode, log_path)
             # Check log for session-related error indicators
             try:

@@ -12,7 +12,7 @@ Supported providers (all free tier):
   - OpenRouter   (aggregates free models, no key needed for some)
   - Together AI  (free credits on signup)
   - Mistral      (free tier on small models)
-  - Cohere       (free tier on Command-R)
+  - Cohere       (REMOVED — rejects tool_calls + text content in same message)
   - Hugging Face (free inference API, hundreds of models)
   - NVIDIA NIM   (free credits on hosted models)
   - Qwen Coder   (CLI-based, 1000 req/day via qwen.ai OAuth — auto-detected if installed)
@@ -160,12 +160,8 @@ def _build_providers() -> list[Provider | QwenCLIProvider]:
             model=os.environ.get("MISTRAL_MODEL", "mistral-small-latest"),
             api_key=os.environ.get("MISTRAL_API_KEY", ""),
         ),
-        Provider(
-            name="Cohere",
-            base_url="https://api.cohere.com/compatibility/v1",
-            model=os.environ.get("COHERE_MODEL", "command-r-plus"),
-            api_key=os.environ.get("COHERE_API_KEY", ""),
-        ),
+        # Cohere removed — its compatibility API rejects assistant messages with both
+        # tool_calls + content, which OpenCode generates during agentic tool use.
         Provider(
             name="Hugging Face",
             base_url="https://api-inference.huggingface.co/v1",
@@ -286,14 +282,14 @@ class FreeRunner(RunnerBase):
             # Validate path (prevent traversal) and size before encoding
             try:
                 real_path = os.path.realpath(image_path)
-                tmp_dir = tempfile.gettempdir()
-                if not real_path.startswith(tmp_dir):
+                tmp_dir = os.path.realpath(tempfile.gettempdir())
+                if os.path.commonpath([real_path, tmp_dir]) != tmp_dir:
                     return "❌ Invalid image path."
-                size = os.path.getsize(real_path)
-                if size > 10 * 1024 * 1024:
-                    return "❌ Image too large (max 10MB)."
                 with open(real_path, "rb") as f:
-                    img_b64 = base64.b64encode(f.read()).decode()
+                    img_data = f.read()
+                if len(img_data) > 10 * 1024 * 1024:
+                    return "❌ Image too large (max 10MB)."
+                img_b64 = base64.b64encode(img_data).decode()
                 ext = os.path.splitext(real_path)[1].lower().lstrip(".")
                 mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
                         "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")

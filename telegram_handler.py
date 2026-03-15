@@ -6,7 +6,7 @@ import re
 import tempfile
 import httpx
 
-from config import TELEGRAM_API, TELEGRAM_MAX_MESSAGE_LENGTH
+from config import TELEGRAM_API, TELEGRAM_BOT_TOKEN, TELEGRAM_MAX_MESSAGE_LENGTH
 
 logger = logging.getLogger("bridge.telegram")
 
@@ -270,8 +270,7 @@ async def download_photo(file_id: str) -> str:
     file_path = resp.json()["result"]["file_path"]
 
     # Download the file
-    token = TELEGRAM_API.split("/bot")[1]
-    download_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+    download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
     resp = await client.get(download_url)
     resp.raise_for_status()
 
@@ -293,8 +292,7 @@ async def download_document(file_id: str, dest_path: str) -> str:
     resp.raise_for_status()
     file_path = resp.json()["result"]["file_path"]
 
-    token = TELEGRAM_API.split("/bot")[1]
-    download_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+    download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
     resp = await client.get(download_url)
     resp.raise_for_status()
 
@@ -457,8 +455,11 @@ async def _send_single(
     text: str,
     retry: bool = True,
     parse_mode: str | None = None,
+    _depth: int = 0,
 ) -> int | None:
     """Send a single message chunk. Returns message_id on success, None on failure."""
+    if _depth >= 2:
+        return None
     url = f"{TELEGRAM_API}/sendMessage"
     payload: dict = {"chat_id": chat_id, "text": text}
     if parse_mode:
@@ -469,19 +470,19 @@ async def _send_single(
         if resp.status_code == 200:
             return resp.json().get("result", {}).get("message_id")
 
-        # If Telegram rejected our HTML, retry as plain text
+        # If Telegram rejected our HTML, retry as plain text once
         if parse_mode and resp.status_code == 400:
             logger.warning("HTML parse rejected, falling back to plain text")
             plain = strip_html_tags(text)
-            return await _send_single(client, chat_id, plain, retry=retry, parse_mode=None)
+            return await _send_single(client, chat_id, plain, retry=False, parse_mode=None, _depth=_depth + 1)
 
         logger.error("Telegram API error %d: %s", resp.status_code, resp.text)
     except httpx.HTTPError as exc:
         logger.error("Telegram HTTP error: %s", exc)
 
-    # Retry once
+    # Retry once on network error
     if retry:
         logger.info("Retrying send to chat %d", chat_id)
-        return await _send_single(client, chat_id, text, retry=False, parse_mode=parse_mode)
+        return await _send_single(client, chat_id, text, retry=False, parse_mode=parse_mode, _depth=_depth + 1)
 
     return None
