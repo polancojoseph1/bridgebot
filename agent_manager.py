@@ -62,7 +62,7 @@ def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) ->
         logger.error("spawn_agent: agent '%s' not found", agent_id)
         return None
 
-    inst = instances.create(agent.name, owner_id=owner_id)
+    inst = instances.create(agent.name, owner_id=owner_id, switch_active=False)
     inst.agent_id = agent_id
     inst.agent_system_prompt = _build_agent_system_prompt(agent)
     inst.model = agent.model
