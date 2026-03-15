@@ -31,7 +31,7 @@ except ImportError:
         def __call__(self): return self._zi
     LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "UTC"))  # type: ignore
 
-from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
+from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent, get_agent_by_name
 from agent_skills import build_skills_prompt
 from instance_manager import InstanceManager, Instance
 

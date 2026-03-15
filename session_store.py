@@ -114,6 +114,11 @@ class SessionStore:
                     cols.append("status=?"); params.append(status)
                 if original_prompt is not None:
                     cols.append("original_prompt=?"); params.append(original_prompt[:1000])
+                _ALLOWED_SESSION_COLS = {
+                    "updated_at=?", "title=?", "session_id=?", "status=?", "original_prompt=?",
+                }
+                assert all(c in _ALLOWED_SESSION_COLS for c in cols), \
+                    f"Unexpected SQL column clause: {[c for c in cols if c not in _ALLOWED_SESSION_COLS]}"
                 params += [str(chat_id), bot_name, instance_number]
                 conn.execute(
                     f"UPDATE sessions SET {', '.join(cols)} "
@@ -344,6 +349,18 @@ class SessionStore:
     # -------------------------------------------------------------------------
     # Maintenance
     # -------------------------------------------------------------------------
+
+    def delete_session(self, chat_id: int, bot_name: str, instance_number: int) -> None:
+        """Permanently delete a session and its messages from the store."""
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM messages WHERE chat_id=? AND bot_name=? AND instance_number=?",
+                (str(chat_id), bot_name, instance_number),
+            )
+            conn.execute(
+                "DELETE FROM sessions WHERE chat_id=? AND bot_name=? AND instance_number=?",
+                (str(chat_id), bot_name, instance_number),
+            )
 
     def prune_old_messages(self, grace_seconds: int = 86400) -> int:
         """Delete messages for sessions resolved more than grace_seconds ago."""

@@ -291,6 +291,14 @@ async def _restore_sessions_after_crash() -> None:
             num = s["instance_number"]
             title = s.get("title") or f"Instance {num}"
 
+            # Skip ephemeral agent sessions — they should never be restored.
+            # Match by title since agent_id isn't stored in the session.
+            _ephemeral_check = agent_manager.get_agent_by_name(title)
+            if _ephemeral_check and _ephemeral_check.ephemeral:
+                _session_store.delete_session(chat_id, CLI_RUNNER, num)
+                logger.info("Purged ephemeral session #%d (%s) from store", num, title)
+                continue
+
             inst = instances.create_with_number(num, title, owner_id=owner_id)
             _ensure_worker(inst)
 
