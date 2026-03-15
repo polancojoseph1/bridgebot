@@ -80,7 +80,7 @@ def _chunk_text(text: str) -> list[str]:
 
 
 def _file_hash(content: str) -> str:
-    return hashlib.sha256(content.encode()).hexdigest()[:16]
+    return hashlib.sha256(content.encode()).hexdigest()
 
 
 def _index_files_sync(user_id: int = 0) -> int:
@@ -208,7 +208,7 @@ def _store_sync(user_msg: str, response: str, user_id: int) -> None:
     if len(combined) > 2000:
         combined = combined[:2000] + "..."
 
-    doc_id = f"conv:{hashlib.sha256(combined.encode()).hexdigest()[:16]}:{time.time()}"
+    doc_id = f"conv:{hashlib.sha256(combined.encode()).hexdigest()}:{time.time()}"
 
     collection.upsert(
         ids=[doc_id],
@@ -241,7 +241,7 @@ def _remember_sync(text: str, user_id: int) -> None:
     """Save text to both ChromaDB and the user's remembered.md."""
     collection = _get_collection(user_id)
 
-    doc_id = f"remember:{hashlib.sha256(text.encode()).hexdigest()[:16]}:{time.time()}"
+    doc_id = f"remember:{hashlib.sha256(text.encode()).hexdigest()}:{time.time()}"
     collection.upsert(
         ids=[doc_id],
         documents=[text],
@@ -314,7 +314,7 @@ def _extract_and_save_sync(user_msg: str, response: str, user_id: int) -> None:
 
     # Also store in ChromaDB with special source tag
     collection = _get_collection(user_id)
-    doc_id = f"auto:{hashlib.sha256(user_msg.encode()).hexdigest()[:16]}:{time.time()}"
+    doc_id = f"auto:{hashlib.sha256(user_msg.encode()).hexdigest()}:{time.time()}"
     collection.upsert(
         ids=[doc_id],
         documents=[user_msg],
@@ -326,10 +326,17 @@ def _extract_and_save_sync(user_msg: str, response: str, user_id: int) -> None:
     logger.info("Auto-extracted memory: %s...", user_msg[:50])
 
 
-async def extract_and_save(user_msg: str, response: str, user_id: int = 0) -> None:
-    """Post-processing: auto-extract facts from conversation (async, fire-and-forget)."""
+async def extract_and_save(user_msg: str, response: str, user_id: int = 0, owner_only: bool = False) -> None:
+    """Post-processing: auto-extract facts from conversation (async, fire-and-forget).
+
+    Args:
+        owner_only: When True (non-owner user message), skip auto-extraction entirely.
+                    Prevents memory poisoning via user-crafted trigger phrases.
+    """
     if not MEMORY_ENABLED:
         return
+    if owner_only:
+        return  # Non-owner messages never write to persistent memory
 
     loop = asyncio.get_event_loop()
     try:

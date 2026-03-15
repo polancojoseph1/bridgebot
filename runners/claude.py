@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -102,6 +103,30 @@ class ClaudeRunner(RunnerBase):
             return f"[stderr] {err}"
         return "(no response)"
 
+    # Env vars stripped from subprocess when running on behalf of a non-owner user
+    _SENSITIVE_ENV_PATTERNS = re.compile(
+        r"^(AWS_|GOOGLE_|GCP_|GCLOUD_|GITHUB_|GH_|GITLAB_|AZURE_|STRIPE_|"
+        r"TWILIO_|SENDGRID_|CLOUDFLARE_|DIGITALOCEAN_|HEROKU_|VERCEL_|NETLIFY_|"
+        r"OPENAI_|GEMINI_|COHERE_|MISTRAL_|TOGETHER_)",
+        re.IGNORECASE,
+    )
+    _SENSITIVE_ENV_EXACT = {
+        "SSH_AUTH_SOCK", "SSH_AGENT_PID",
+        "INTERNAL_API_KEY", "TELEGRAM_BOT_TOKEN", "COLLAB_TOKEN",
+        "ALLOWED_USER_ID", "ALLOWED_USER_IDS", "USER_NAMES",
+    }
+
+    def _build_env(self, user_is_owner: bool) -> dict:
+        """Build subprocess environment. Strip sensitive vars for non-owner users."""
+        base = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        if user_is_owner:
+            return base
+        return {
+            k: v for k, v in base.items()
+            if k not in self._SENSITIVE_ENV_EXACT
+            and not self._SENSITIVE_ENV_PATTERNS.match(k)
+        }
+
     async def run(
         self,
         message: str,
@@ -111,6 +136,7 @@ class ClaudeRunner(RunnerBase):
         memory_context: str = "",
         on_subprocess_started: Callable[[int, str, str], None] | None = None,
         chat_id: int = 0,
+        user_is_owner: bool = True,
     ) -> str:
         instance.was_stopped = False
 
@@ -119,7 +145,7 @@ class ClaudeRunner(RunnerBase):
         except FileNotFoundError:
             return "\u274c Error: claude CLI not found. Is Claude Code installed?"
 
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env = self._build_env(user_is_owner)
         session_id = instance.session_id
         session_started = instance.session_started
 
@@ -127,6 +153,11 @@ class ClaudeRunner(RunnerBase):
         cmd = [binary, "-p", "--model", model,
                "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]
+
+        # Non-owner users cannot trigger shell (Bash) tool execution.
+        # This is enforced at the CLI level — the LLM cannot override it.
+        if not user_is_owner:
+            cmd += ["--disallowed-tools", "Bash"]
 
         if self.chrome_enabled:
             cmd.append("--chrome")

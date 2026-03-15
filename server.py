@@ -29,6 +29,7 @@ from config import (
 from runners import create_runner
 from telegram_handler import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client, register_bot_commands, send_inline_keyboard, answer_callback_query
 import user_access
+import security_filter
 from image_handler import generate_image
 try:
     import playwright_handler
@@ -1178,6 +1179,13 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
 
     inst = instance or instances.active
     proc_owner_id = 0 if user_id == ALLOWED_USER_ID else user_id
+    _is_owner = (user_id == ALLOWED_USER_ID)
+
+    # ── Security: pre-LLM injection / jailbreak scan ──────────────
+    _blocked, _block_reason, text = security_filter.scan_input(text, is_owner=_is_owner)
+    if _blocked:
+        await send_message(chat_id, _block_reason)
+        return
 
     # Ephemeral agents run silently — no "Thinking..." message, no progress indicators
     _ephemeral_agent = agent_manager.get_agent(inst.agent_id) if inst.agent_id else None
@@ -1242,8 +1250,12 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
         instance=inst,
         on_subprocess_started=_on_subprocess_started,
         chat_id=chat_id,
+        user_is_owner=_is_owner,
     )
     elapsed = time.time() - start
+
+    # ── Security: post-LLM output filter (system prompt leak guard) ──
+    response = security_filter.filter_output(response)
 
     # --- Session store: clear subprocess tracking and log response ---
     _session_store.clear_subprocess(chat_id, CLI_RUNNER, inst.id)
@@ -1271,8 +1283,9 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
         )
 
     # Store memory before appending footer
+    # extract_and_save is owner-only — non-owner messages never auto-write to memory
     asyncio.ensure_future(memory_handler.store_conversation(text, response, user_id=user_id))
-    asyncio.ensure_future(memory_handler.extract_and_save(text, response, user_id=user_id))
+    asyncio.ensure_future(memory_handler.extract_and_save(text, response, user_id=user_id, owner_only=not _is_owner))
 
     response += _context_footer(inst)
     labeled = _label(inst, response, proc_owner_id)
@@ -1417,8 +1430,11 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
                 return  # user doesn't want to see tool indicators
             await send_message(chat_id, _label(inst, progress_text, proc_owner_id, show_emoji=False), format_markdown=True)
 
-    response = await runner.run(prompt, on_progress=on_progress, memory_context=memory_context, instance=inst)
+    _voice_is_owner = (user_id == ALLOWED_USER_ID)
+    response = await runner.run(prompt, on_progress=on_progress, memory_context=memory_context, instance=inst, user_is_owner=_voice_is_owner)
     elapsed = time.time() - start
+
+    response = security_filter.filter_output(response)
 
     if thinking_msg_id:
         await delete_message(chat_id, thinking_msg_id)
@@ -1430,7 +1446,7 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
 
     # Store memory before appending footer
     asyncio.ensure_future(memory_handler.store_conversation(raw_prompt, response, user_id=user_id))
-    asyncio.ensure_future(memory_handler.extract_and_save(raw_prompt, response, user_id=user_id))
+    asyncio.ensure_future(memory_handler.extract_and_save(raw_prompt, response, user_id=user_id, owner_only=not _voice_is_owner))
 
     # Voice in -> voice + text out
     response += _context_footer(inst)

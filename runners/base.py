@@ -87,15 +87,18 @@ class RunnerBase(ABC):
         on_progress: Callable[[str], Awaitable[None]] | None = None,
         image_path: str | None = None,
         memory_context: str = "",
+        user_is_owner: bool = True,
     ) -> str:
         """Run a prompt with full session tracking and streaming progress.
 
         Args:
-            message: The user's message text.
-            instance: Instance object with session state (from instance_manager).
-            on_progress: Async callback for tool-use status updates.
-            image_path: Optional path to an image file to include.
+            message:      The user's message text.
+            instance:     Instance object with session state (from instance_manager).
+            on_progress:  Async callback for tool-use status updates.
+            image_path:   Optional path to an image file to include.
             memory_context: Optional ChromaDB memory context to inject.
+            user_is_owner: False when the sender is an approved non-owner user.
+                           Runners use this to restrict tools and sandbox the env.
 
         Returns:
             The assistant's response text.
