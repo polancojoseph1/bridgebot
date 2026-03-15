@@ -67,15 +67,62 @@ async def fire(trigger_id: str) -> bool:
 
 
 async def _run_agent(trigger_id: str, agent_id: str, agent_name: str, task: str, chat_id: int) -> None:
-    """Run the agent task silently — no start/finish notifications, just the output."""
+    """Run the agent task.
+
+    Ephemeral agents bypass the Telegram instance system entirely — they run
+    directly as a background process and send one plain message when done.
+    Non-ephemeral agents go through assign_task() as before.
+    """
+    from agent_registry import get_agent
     from agent_manager import assign_task
 
+    agent = get_agent(agent_id)
+    if agent and agent.ephemeral:
+        await _run_ephemeral_direct(trigger_id, agent, task, chat_id)
+    else:
+        try:
+            await assign_task(agent_id, task, chat_id, _instance_manager, _send_fn)
+        except Exception as e:
+            logger.error("Trigger '%s' agent run failed: %s", trigger_id, e)
+            await _send_fn(
+                chat_id,
+                f"❌ **{agent_name}** [TRIGGER: {trigger_id}] failed: {e}",
+                format_markdown=True,
+            )
+
+
+async def _run_ephemeral_direct(trigger_id: str, agent, task: str, chat_id: int) -> None:
+    """Run an ephemeral agent directly — no Telegram instance created, no label, one plain message."""
+    from runners import create_runner
+    from agent_manager import _build_agent_system_prompt
+    from instance_manager import Instance
+
+    logger.info("[ephemeral] Starting direct run: trigger=%s agent=%s", trigger_id, agent.id)
+
+    # Temporary instance — never registered in InstanceManager, invisible to /list
+    inst = Instance(id=-1, title=agent.name)
+    inst.agent_id = agent.id
+    inst.agent_system_prompt = _build_agent_system_prompt(agent)
+    inst.model = agent.model
+
+    runner = create_runner()
+
     try:
-        await assign_task(agent_id, task, chat_id, _instance_manager, _send_fn)
-    except Exception as e:
-        logger.error("Trigger '%s' agent run failed: %s", trigger_id, e)
-        await _send_fn(
-            chat_id,
-            f"❌ **{agent_name}** [TRIGGER: {trigger_id}] failed: {e}",
-            format_markdown=True,
+        from agent_memory import get_agent_context
+        memory_context = await asyncio.get_event_loop().run_in_executor(
+            None, get_agent_context, agent.id, task
         )
+    except Exception:
+        memory_context = ""
+
+    try:
+        result = await runner.run(task, instance=inst, memory_context=memory_context)
+        if result and result.strip():
+            await _send_fn(chat_id, result, format_markdown=True)
+        else:
+            logger.warning("[ephemeral] Agent '%s' returned empty result", agent.id)
+    except Exception as e:
+        logger.error("[ephemeral] Agent '%s' failed: %s", agent.id, e)
+        await _send_fn(chat_id, f"❌ {agent.name} failed: {e}", format_markdown=True)
+
+    logger.info("[ephemeral] Done: trigger=%s agent=%s", trigger_id, agent.id)
