@@ -248,10 +248,13 @@ async def _start_scheduler_background() -> None:
         await scheduler.scheduler_loop()
 
 
-async def _notify_startup_background() -> None:
+async def _notify_startup_background(crashed: bool = False) -> None:
     """Send startup ping without blocking server readiness."""
     await asyncio.sleep(0.2)
-    await send_message(ALLOWED_USER_ID, "\u2705 Server restarted and ready.")
+    if crashed:
+        await send_message(ALLOWED_USER_ID, "\u26a0\ufe0f Server restarted after crash \u2014 checking for sessions to recover...")
+    else:
+        await send_message(ALLOWED_USER_ID, "\u2705 Server restarted and ready.")
 
 
 async def _restore_sessions_after_crash() -> None:
@@ -358,6 +361,11 @@ async def _restore_sessions_after_crash() -> None:
         await send_message(
             ALLOWED_USER_ID,
             f"\u267b\ufe0f Crash detected. Restoring {unresolved_count} active session(s)...",
+        )
+    else:
+        await send_message(
+            ALLOWED_USER_ID,
+            "\u2139\ufe0f Crash detected but no active sessions to recover. Starting fresh.",
         )
 
 
@@ -563,7 +571,7 @@ async def lifespan(application: FastAPI):
         trigger_registry.init_db()
         trigger_worker.init(instances, send_message)
         logger.info("Trigger system ready")
-    asyncio.create_task(_notify_startup_background())
+    asyncio.create_task(_notify_startup_background(crashed=_crashed))
     if _crashed:
         asyncio.create_task(_restore_sessions_after_crash())
     # Start borrow session timeout checker
@@ -1170,6 +1178,19 @@ async def _process_message(chat_id: int, text: str, voice_reply: bool = False, i
     # session stays unresolved and recovery will re-run the task on restart.
     _session_store.mark_resolved(chat_id, CLI_RUNNER, inst.id)
 
+    # Ephemeral agent cleanup — self-destruct instance after task completes.
+    # Scheduled via ensure_future so we don't cancel ourselves from within the worker.
+    if inst.agent_id:
+        from agent_registry import get_agent as _get_agent
+        _ephemeral_agent = _get_agent(inst.agent_id)
+        if _ephemeral_agent and _ephemeral_agent.ephemeral:
+            _inst_id = inst.id
+            async def _destroy_ephemeral(iid=_inst_id):
+                await asyncio.sleep(0)  # yield so worker loop exits cleanly first
+                instances.remove(iid, 0)
+                logger.info("Ephemeral instance #%d destroyed after task", iid)
+            asyncio.ensure_future(_destroy_ephemeral())
+
     # Auto-detect and send any media files referenced in the response
     await _extract_and_send_media(chat_id, response)
 
@@ -1534,7 +1555,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "/clear \u2014 Kill all instances, reset to one Default\n"
             "/new \u2014 Reset conversation for the active instance\n"
             "/server \u2014 Restart bridge server\n"
-            f"/model sonnet|opus \u2014 Switch model [{(active.model.split('-')[1] if '-' in active.model else active.model).capitalize()}]\n\n"
+            f"/model {'<name>' if CLI_RUNNER == 'opencode' else 'sonnet|opus'} \u2014 Switch model [{(active.model.split('/')[-1] if '/' in active.model else (active.model.split('-')[1] if '-' in active.model else active.model) if active.model else 'default').capitalize()}]\n\n"
             "**Display**\n"
             "/show code | thoughts | both\n"
             "/hide code | thoughts | both\n\n"
@@ -1572,21 +1593,54 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         parts = text.split()
         if len(parts) < 2:
             inst = instances.get_active_for(owner_id)
-            await send_message(chat_id, f"Current model for <b>#{instances.display_num(inst.id, owner_id)}</b>: <code>{inst.model}</code>\n\nUsage: /model [sonnet|opus]", parse_mode="HTML")
+            current = inst.model or os.environ.get("OPENCODE_MODEL", "") or "(default)"
+            if CLI_RUNNER == "opencode":
+                usage_hint = "Usage: /model <name>\nShortcuts: free, litellm, mimo, deepseek, sonnet, opus\nOr full name: openrouter/anthropic/claude-sonnet-4"
+            else:
+                usage_hint = "Usage: /model [sonnet|opus]"
+            await send_message(chat_id, f"Current model for <b>#{instances.display_num(inst.id, owner_id)}</b>: <code>{current}</code>\n\n{usage_hint}", parse_mode="HTML")
         else:
-            m = parts[1].lower()
+            m = " ".join(parts[1:]).strip()
             new_model = None
-            if "sonnet" in m:
-                new_model = "claude-sonnet-4-6"
-            elif "opus" in m:
-                new_model = "claude-opus-4-6"
+            # OpenCode runner: support shortcuts + full model names
+            if CLI_RUNNER == "opencode":
+                m_lower = m.lower()
+                _opencode_shortcuts = {
+                    "free": "litellm/free-agent",
+                    "litellm": "litellm/free-agent",
+                    "mimo": "opencode/mimo-v2-flash-free",
+                    "pickle": "opencode/big-pickle",
+                    "nano": "opencode/gpt-5-nano",
+                    "minimax": "opencode/minimax-m2.5-free",
+                    "nemotron": "opencode/nemotron-3-super-free",
+                    "deepseek": "openrouter/deepseek/deepseek-chat-v3-0324",
+                    "sonnet": "openrouter/anthropic/claude-sonnet-4",
+                    "opus": "openrouter/anthropic/claude-opus-4",
+                    "haiku": "openrouter/anthropic/claude-haiku-4.5",
+                    "gemini": "openrouter/google/gemini-2.5-flash",
+                    "gpt4o": "openrouter/openai/gpt-4o",
+                    "llama": "openrouter/meta-llama/llama-4-scout",
+                    "qwen": "openrouter/qwen/qwen3-coder",
+                }
+                new_model = _opencode_shortcuts.get(m_lower)
+                if not new_model and ("/" in m or m.startswith("opencode") or m.startswith("openrouter") or m.startswith("ollama") or m.startswith("litellm")):
+                    new_model = m  # accept full model name as-is
+            else:
+                if "sonnet" in m.lower():
+                    new_model = "claude-sonnet-4-6"
+                elif "opus" in m.lower():
+                    new_model = "claude-opus-4-6"
 
             if new_model:
                 inst = instances.get_active_for(owner_id)
                 inst.model = new_model
                 await send_message(chat_id, f"\u2705 Model for <b>#{instances.display_num(inst.id, owner_id)}</b> set to <code>{new_model}</code>", parse_mode="HTML")
             else:
-                await send_message(chat_id, "\u274c Invalid model. Choose 'sonnet' or 'opus'.")
+                if CLI_RUNNER == "opencode":
+                    shortcuts = "free, litellm, mimo, pickle, nano, deepseek, sonnet, opus, haiku, gemini, gpt4o, llama, qwen"
+                    await send_message(chat_id, f"\u274c Unknown model shortcut.\nAvailable: {shortcuts}\nOr pass a full model name like: openrouter/provider/model")
+                else:
+                    await send_message(chat_id, "\u274c Invalid model. Choose 'sonnet' or 'opus'.")
 
     elif cmd == "/list":
         await send_message(chat_id, instances.format_list(for_owner_id=owner_id), parse_mode="HTML")

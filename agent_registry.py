@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS agents (
     updated_at  REAL NOT NULL,
     proactive   INTEGER NOT NULL DEFAULT 0,
     proactive_schedule TEXT NOT NULL DEFAULT '',
-    proactive_task TEXT NOT NULL DEFAULT ''
+    proactive_task TEXT NOT NULL DEFAULT '',
+    ephemeral   INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS skills (
     id          TEXT PRIMARY KEY,
@@ -55,6 +56,7 @@ _MIGRATIONS = [
     "ALTER TABLE agents ADD COLUMN proactive INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE agents ADD COLUMN proactive_schedule TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE agents ADD COLUMN proactive_task TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE agents ADD COLUMN ephemeral INTEGER NOT NULL DEFAULT 0",
     # skills table added as part of _SCHEMA (CREATE TABLE IF NOT EXISTS — safe to re-run)
 ]
 
@@ -77,6 +79,7 @@ class AgentDefinition:
     proactive: bool = False
     proactive_schedule: str = ""   # HH:MM (TIMEZONE env var) — when to fire daily
     proactive_task: str = ""       # the task prompt to run automatically
+    ephemeral: bool = False        # if True: instance self-destructs after task completes
 
 
 @dataclass
@@ -118,6 +121,7 @@ def _row_to_agent(row: sqlite3.Row) -> AgentDefinition:
         proactive=bool(row["proactive"]),
         proactive_schedule=row["proactive_schedule"] or "",
         proactive_task=row["proactive_task"] or "",
+        ephemeral=bool(row["ephemeral"]),
     )
 
 
@@ -213,7 +217,7 @@ def update_agent(agent_id: str, **fields) -> AgentDefinition | None:
         return None
 
     allowed = {"name", "agent_type", "system_prompt", "skills", "model", "collaborators",
-               "proactive", "proactive_schedule", "proactive_task"}
+               "proactive", "proactive_schedule", "proactive_task", "ephemeral"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return agent

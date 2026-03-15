@@ -94,7 +94,11 @@ def get_running_instance(agent_id: str, instances: InstanceManager) -> Instance 
 
 
 def get_or_spawn(agent_id: str, instances: InstanceManager, owner_id: int = 0) -> Instance | None:
-    """Return existing instance for this agent, spawning a new one if needed."""
+    """Return existing instance for this agent, spawning a new one if needed.
+    Ephemeral agents always get a fresh instance (no reuse)."""
+    agent = get_agent(agent_id)
+    if agent and agent.ephemeral:
+        return spawn_agent(agent_id, instances, owner_id)
     existing = get_running_instance(agent_id, instances)
     if existing:
         return existing
