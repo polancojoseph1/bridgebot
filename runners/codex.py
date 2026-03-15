@@ -215,6 +215,7 @@ class CodexRunner(RunnerBase):
         memory_context: str = "",
         on_subprocess_started: Callable[[int, str, str], None] | None = None,
         chat_id: int = 0,
+        user_is_owner: bool = True,
     ) -> str:
         instance.was_stopped = False
 

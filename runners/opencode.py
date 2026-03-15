@@ -118,6 +118,7 @@ class OpenCodeRunner(RunnerBase):
         memory_context: str = "",
         on_subprocess_started: Callable[[int, str, str], None] | None = None,
         chat_id: int = 0,
+        user_is_owner: bool = True,
     ) -> str:
         instance.was_stopped = False
 
@@ -215,6 +216,7 @@ class OpenCodeRunner(RunnerBase):
         _pending_text: str = ""
         _usage: dict = {"input_tokens": 0, "output_tokens": 0, "cost": 0.0}
         _captured_session_id: str = ""
+        _session_corrupt: bool = False
 
         async def _flush_text_as_progress():
             nonlocal _pending_text
@@ -230,7 +232,7 @@ class OpenCodeRunner(RunnerBase):
             _pending_text = ""
 
         async def process_stream():
-            nonlocal _captured_session_id, _pending_text
+            nonlocal _captured_session_id, _pending_text, _session_corrupt
             _any_progress_sent = False
 
             async for line, _offset in self.tail_log_file(
@@ -288,7 +290,11 @@ class OpenCodeRunner(RunnerBase):
                     err_name = err_data.get("name", "Error")
                     err_msg = err_data.get("data", {}).get("message", str(err_data))
                     logger.error("[opencode] %s: %s", err_name, err_msg)
-                    if on_progress:
+                    # Detect Mistral/LiteLLM tool call mismatch — session must be reset
+                    _corrupt_keywords = ("invalid_request_message_order", "not the same number of function calls")
+                    if any(k in err_msg.lower() for k in _corrupt_keywords):
+                        _session_corrupt = True
+                    elif on_progress:
                         await on_progress(f"\u274c {err_name}: {err_msg[:200]}")
 
             await proc.wait()
@@ -344,6 +350,11 @@ class OpenCodeRunner(RunnerBase):
                 self.new_session(instance)
                 return "\u274c Session error. New conversation started \u2014 please resend your message."
             return "\u274c OpenCode exited with an error."
+
+        # Corrupt session: tool call / response mismatch rejected by Mistral
+        if _session_corrupt:
+            self.new_session(instance)
+            return "\u26a0\ufe0f Session had corrupt tool call history (Mistral rejected it). Session has been reset \u2014 please resend your message."
 
         if _pending_text:
             return _pending_text
