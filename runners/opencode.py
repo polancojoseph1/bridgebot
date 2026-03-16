@@ -24,11 +24,28 @@ class OpenCodeRunner(RunnerBase):
     cli_command = "opencode"
 
     def __init__(self):
-        from config import CLI_TIMEOUT, CLI_SYSTEM_PROMPT, MEMORY_DIR, MEMORY_ENABLED
+        from config import CLI_TIMEOUT, CLI_SYSTEM_PROMPT, MEMORY_DIR, MEMORY_ENABLED, USER_NAME
         self.timeout = CLI_TIMEOUT
-        self.system_prompt = CLI_SYSTEM_PROMPT
         self.memory_dir = MEMORY_DIR
+        self.system_prompt = (CLI_SYSTEM_PROMPT.replace("{MEMORY_DIR}", MEMORY_DIR).replace("{OWNER_NAME}", USER_NAME or "the user") if CLI_SYSTEM_PROMPT else CLI_SYSTEM_PROMPT)
         self.memory_enabled = MEMORY_ENABLED
+
+    def discover_binary(self) -> str:
+        """Use OPENCODE_BIN_PATH if set, otherwise fall back to PATH lookup."""
+        import shutil
+        custom = os.environ.get("OPENCODE_BIN_PATH")
+        if custom:
+            import stat as _stat
+            expanded = os.path.expanduser(custom)
+            if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
+                return expanded
+            raise FileNotFoundError(f"OPENCODE_BIN_PATH={custom!r} not found or not executable")
+        path = shutil.which(self.cli_command)
+        if path is None:
+            raise FileNotFoundError(
+                f"{self.cli_command} CLI not found in PATH. Is opencode-ai installed?"
+            )
+        return path
 
     def new_session(self, instance) -> None:
         instance.session_id = ""  # opencode assigns its own ses_... IDs
@@ -386,6 +403,9 @@ class OpenCodeRunner(RunnerBase):
         elif name_lower in ("web_search", "google_web_search"):
             query = tool_input.get("query", tool_input.get("search_query", ""))
             return f"\U0001f50e Search: {query}"
+        elif name_lower in ("question", "ask", "ask_followup_question", "ask_user"):
+            # Silent — OpenCode's interactive question tool, not useful as a progress msg
+            return ""
         elif tool_name:
             return f"\U0001f527 {title or tool_name}"
         return ""

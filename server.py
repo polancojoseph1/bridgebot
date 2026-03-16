@@ -261,36 +261,53 @@ async def _notify_startup_background(crashed: bool = False) -> None:
 
 
 async def _wa_qr_watcher() -> None:
-    """Watch for a fresh QR PNG from the Baileys bridge and send it via Telegram."""
-    import telegram_handler as _tg  # always use Telegram for QR delivery regardless of transport
+    """Watch for pairing code or QR from the Baileys bridge and log setup URLs."""
     wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
     qr_png = os.path.join(wa_auth_dir, "qr.png")
     qr_ready = os.path.join(wa_auth_dir, "qr.ready")
+    pairing_code_file = os.path.join(wa_auth_dir, "pairing_code.txt")
+    pairing_code_ready = os.path.join(wa_auth_dir, "pairing_code.ready")
 
-    await asyncio.sleep(2)  # give bridge time to connect first
-    await _tg.send_message(ALLOWED_USER_ID, "📱 WhatsApp bridge starting — scan the QR code when it arrives to connect your number.")
+    logger.info("[wa] Setup endpoints ready:")
+    logger.info("[wa]   QR code:      http://localhost:%s/wa/qr", PORT)
+    logger.info("[wa]   Pairing code: http://localhost:%s/wa/pairing-code", PORT)
+    logger.info("[wa]   Status:       http://localhost:%s/wa/status", PORT)
 
-    last_seen = 0.0
-    for _ in range(60):  # poll for up to 5 minutes
+    await asyncio.sleep(4)  # give bridge time to request pairing code
+
+    last_qr_mtime = 0.0
+    for _ in range(120):  # poll for up to 10 minutes
         await asyncio.sleep(5)
-        if os.path.exists(qr_ready) and os.path.exists(qr_png):
+
+        # Phone pairing code (priority when WA_PHONE_NUMBER is set)
+        if os.path.exists(pairing_code_ready) and os.path.exists(pairing_code_file):
+            try:
+                os.remove(pairing_code_ready)
+                with open(pairing_code_file) as _f:
+                    code = _f.read().strip()
+                logger.info("[wa] Pairing code ready: %s — open http://localhost:%s/wa/pairing-code", code, PORT)
+                continue
+            except Exception as e:
+                logger.warning("[wa] Failed to read pairing code: %s", e)
+
+        # QR fallback
+        elif os.path.exists(qr_ready) and os.path.exists(qr_png):
             mtime = os.path.getmtime(qr_png)
-            if mtime > last_seen:
-                last_seen = mtime
+            if mtime > last_qr_mtime:
+                last_qr_mtime = mtime
                 try:
                     os.remove(qr_ready)
-                    await _tg.send_message(ALLOWED_USER_ID, "📷 Scan this QR in WhatsApp → Linked Devices → Link a Device (expires in ~20s, will refresh automatically):")
-                    await _tg.send_photo(ALLOWED_USER_ID, qr_png)
-                    logger.info("[wa] QR code sent to owner via Telegram")
+                    logger.info("[wa] QR code ready — open http://localhost:%s/wa/qr in a browser to scan", PORT)
                 except Exception as e:
-                    logger.warning("[wa] Failed to send QR via Telegram: %s", e)
+                    logger.warning("[wa] Failed to process QR ready file: %s", e)
+
         # Stop watching once bridge reports connected
         try:
             import httpx as _hx
             async with _hx.AsyncClient(timeout=2.0) as _c:
                 r = await _c.get(os.environ.get("WA_BRIDGE_URL", "http://127.0.0.1:3001") + "/status")
                 if r.json().get("connected"):
-                    await _tg.send_message(ALLOWED_USER_ID, "✅ WhatsApp connected! You can now message this bot on WhatsApp.")
+                    logger.info("[wa] WhatsApp connected!")
                     return
         except Exception:
             pass
@@ -613,7 +630,7 @@ async def lifespan(application: FastAPI):
     if _crashed:
         asyncio.create_task(_restore_sessions_after_crash())
 
-    # WhatsApp transport: watch for QR code from bridge and send via Telegram
+    # WhatsApp transport: watch for QR code from bridge and log setup URLs
     if os.environ.get("TRANSPORT", "").lower() == "whatsapp":
         asyncio.create_task(_wa_qr_watcher())
     # Start borrow session timeout checker
@@ -622,6 +639,30 @@ async def lifespan(application: FastAPI):
             instances,
             notify_fn=lambda msg: send_message(ALLOWED_USER_ID, msg),
         ))
+    # Free rotating proxy — start if FREE_PROXY_PORT is configured
+    _free_proxy_port = int(os.environ.get("FREE_PROXY_PORT", "0"))
+    if _free_proxy_port:
+        async def _run_free_proxy():
+            try:
+                from runners.free_proxy import app as _free_proxy_app
+                import uvicorn as _uv
+                _proxy_cfg = _uv.Config(
+                    _free_proxy_app,
+                    host="127.0.0.1",
+                    port=_free_proxy_port,
+                    log_level="warning",
+                    lifespan="off",
+                )
+                _proxy_srv = _uv.Server(_proxy_cfg)
+                _proxy_srv.install_signal_handlers = lambda: None  # don't hijack main process signals
+                await _proxy_srv.serve()
+            except SystemExit as _e:
+                logger.error("Free proxy failed to start (port %d in use?): %s", _free_proxy_port, _e)
+            except Exception as _e:
+                logger.error("Free proxy error: %s", _e)
+        asyncio.create_task(_run_free_proxy())
+        logger.info("Free proxy starting on 127.0.0.1:%d", _free_proxy_port)
+
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
     # Stop all instance workers
@@ -1038,6 +1079,64 @@ async def webhook(request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.get("/wa/qr")
+async def wa_qr_endpoint():
+    """Serve the current WhatsApp QR code as a PNG image for scanning in a browser."""
+    from fastapi.responses import FileResponse, HTMLResponse
+    wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
+    qr_png = os.path.join(wa_auth_dir, "qr.png")
+    if not os.path.exists(qr_png):
+        return HTMLResponse("<html><body><h2>No QR code available yet.</h2><p>Make sure the WhatsApp bridge is running and not yet connected. Refresh in a few seconds.</p></body></html>")
+    # Serve with auto-refresh so the browser picks up new QR codes
+    html = f"""<html><head><meta http-equiv="refresh" content="10"><title>WhatsApp QR</title></head>
+<body style="text-align:center;font-family:sans-serif;padding:2em">
+<h2>Scan with WhatsApp</h2>
+<p>WhatsApp → Linked Devices → Link a Device → scan this QR</p>
+<img src="/wa/qr.png" style="width:300px;height:300px"><br>
+<small>Auto-refreshes every 10s. QR expires in ~20s.</small>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/wa/qr.png")
+async def wa_qr_png():
+    """Return the raw QR PNG file."""
+    from fastapi.responses import FileResponse
+    wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
+    qr_png = os.path.join(wa_auth_dir, "qr.png")
+    if not os.path.exists(qr_png):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="QR not ready yet")
+    return FileResponse(qr_png, media_type="image/png")
+
+
+@app.get("/wa/pairing-code")
+async def wa_pairing_code_endpoint():
+    """Return the current WhatsApp phone pairing code as plain text."""
+    from fastapi.responses import PlainTextResponse
+    wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
+    pairing_code_file = os.path.join(wa_auth_dir, "pairing_code.txt")
+    if not os.path.exists(pairing_code_file):
+        return PlainTextResponse("No pairing code available yet. Make sure WA_PHONE_NUMBER is set and the bridge is running.\n", status_code=404)
+    with open(pairing_code_file) as f:
+        code = f.read().strip()
+    return PlainTextResponse(f"WhatsApp pairing code: {code}\n\nIn WhatsApp → Linked Devices → Link a Device → Link with phone number instead → enter this code.\n(Expires in ~60s)\n")
+
+
+@app.get("/wa/status")
+async def wa_status_endpoint():
+    """Check WhatsApp bridge connection status."""
+    import httpx as _hx
+    wa_bridge_url = os.environ.get("WA_BRIDGE_URL", "http://127.0.0.1:3001")
+    try:
+        async with _hx.AsyncClient(timeout=3.0) as _c:
+            r = await _c.get(f"{wa_bridge_url}/status")
+            data = r.json()
+            return JSONResponse({"bridge_reachable": True, "connected": data.get("connected", False), "raw": data})
+    except Exception as e:
+        return JSONResponse({"bridge_reachable": False, "connected": False, "error": str(e)})
+
+
 @app.post("/webhook/whatsapp")
 async def wa_webhook(request: Request):
     """Receive incoming WhatsApp messages from the Baileys Node.js bridge."""
@@ -1239,7 +1338,7 @@ _MEDIA_PATH_RE = re.compile(
 
 
 _MEDIA_ALLOWED_DIRS = [
-    os.path.realpath(os.path.expanduser("~/Desktop/Jefe/")),
+    os.path.realpath(MEMORY_DIR),
     os.path.realpath(os.path.expanduser("/tmp")),
     os.path.realpath(os.path.expanduser("~/.bridgebot/")),
 ]

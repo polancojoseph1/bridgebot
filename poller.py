@@ -24,9 +24,9 @@ from pathlib import Path
 # ── Config ───────────────────────────────────────────────────────────────────
 POLL_INTERVAL  = 5    # seconds between polls
 COOLDOWN_SECS  = 300  # don't re-fire the same trigger within 5 minutes
-DB_PATH       = os.path.expanduser("~/Desktop/Jefe/agents.db")
-STATE_FILE    = os.path.expanduser("~/.jefe/poller_state.json")
-SERVER_URL    = "http://localhost:8585"  # Claude runner
+DB_PATH       = os.path.expanduser(os.environ.get("POLLER_DB_PATH", os.path.join(os.environ.get("MEMORY_DIR", "~"), "agents.db")))
+STATE_FILE    = os.path.expanduser(os.environ.get("POLLER_STATE_FILE", "~/.jefe/poller_state.json"))
+SERVER_URL    = os.environ.get("POLLER_SERVER_URL", "http://localhost:8585")
 LOG_FILE      = os.path.expanduser("~/Library/Logs/jefe/poller.log")
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ def get_triggers() -> list[dict]:
 def get_remote_hash(repo_path: str, branch: str) -> str | None:
     """Fetch from remote and return the latest commit hash on that branch."""
     import re as _re
-    if not _re.match(r"^[a-zA-Z0-9/_.-]+$", branch):
+    if not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9/_.-]*[a-zA-Z0-9]$", branch):
         log.warning("Skipping trigger — invalid branch name: %r", branch)
         return None
     try:

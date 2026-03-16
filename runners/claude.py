@@ -19,17 +19,25 @@ from runners.base import RunnerBase, _SUBPROCESS_LOGGER
 
 logger = logging.getLogger("bridge.claude")
 
+_CLAUDE_AUTH_ERROR_PATTERNS = (
+    "failed to authenticate",
+    "authentication_error",
+    "oauth token has expired",
+    "please obtain a new token",
+    "refresh your existing token",
+)
+
 
 class ClaudeRunner(RunnerBase):
     name = "claude"
     cli_command = "claude"
 
     def __init__(self):
-        from config import CLI_TIMEOUT, CLI_SYSTEM_PROMPT, CHROME_ENABLED, MEMORY_DIR, MEMORY_ENABLED
+        from config import CLI_TIMEOUT, CLI_SYSTEM_PROMPT, CHROME_ENABLED, MEMORY_DIR, MEMORY_ENABLED, USER_NAME
         self.timeout = CLI_TIMEOUT
-        self.system_prompt = CLI_SYSTEM_PROMPT
-        self.chrome_enabled = CHROME_ENABLED
         self.memory_dir = MEMORY_DIR
+        self.system_prompt = (CLI_SYSTEM_PROMPT.replace("{MEMORY_DIR}", MEMORY_DIR).replace("{OWNER_NAME}", USER_NAME or "the user") if CLI_SYSTEM_PROMPT else CLI_SYSTEM_PROMPT)
+        self.chrome_enabled = CHROME_ENABLED
         self.memory_enabled = MEMORY_ENABLED
 
     def new_session(self, instance) -> None:
@@ -234,11 +242,16 @@ class ClaudeRunner(RunnerBase):
             on_subprocess_started(proc.pid, log_path, instance.subprocess_start_time)
 
         final_result = ""
+        result_is_error = False
         _pending_text: str = ""
         _got_result = False
         _usage = {"turn": {}, "context_window": 0, "cost": 0.0}
         _agent_calls: dict[str, dict] = {}
         _agent_counter = 0
+
+        def _is_auth_error(text: str) -> bool:
+            lowered = text.lower()
+            return any(pattern in lowered for pattern in _CLAUDE_AUTH_ERROR_PATTERNS)
 
         async def _flush_text_as_progress():
             nonlocal _pending_text
@@ -254,7 +267,7 @@ class ClaudeRunner(RunnerBase):
             _pending_text = ""
 
         async def process_stream():
-            nonlocal final_result, _agent_counter, _pending_text, _got_result
+            nonlocal final_result, result_is_error, _agent_counter, _pending_text, _got_result
             async for line, _offset in self.tail_log_file(log_path, start_offset=log_start_offset, proc=proc):
                 if not line:
                     continue
@@ -316,7 +329,12 @@ class ClaudeRunner(RunnerBase):
                                 await on_progress(f"\u2705 [Sub-agent {info['n']} done]")
 
                 elif msg_type == "result":
+                    result_is_error = bool(data.get("is_error"))
                     final_result = data.get("result", "")
+                    if result_is_error and not final_result:
+                        errors = data.get("errors") or []
+                        if isinstance(errors, list):
+                            final_result = "\n".join(str(err) for err in errors if err)
                     _usage["cost"] = data.get("total_cost_usd", 0.0)
                     for model_data in data.get("modelUsage", {}).values():
                         _usage["context_window"] = model_data.get("contextWindow", 0)
@@ -365,7 +383,7 @@ class ClaudeRunner(RunnerBase):
             instance.subprocess_start_time = ""
             return "\U0001f6d1 Stopped."
 
-        if proc.returncode == 0 or _got_result:
+        if (proc.returncode == 0 or _got_result) and not result_is_error:
             instance.session_started = True
             if _usage["context_window"]:
                 instance.context_window = _usage["context_window"]
@@ -392,13 +410,35 @@ class ClaudeRunner(RunnerBase):
             instance.subprocess_pid = 0
             instance.subprocess_log_file = ""
             instance.subprocess_start_time = ""
+            if _is_auth_error(_log_tail):
+                self.new_session(instance)
+                return "\u274c Claude auth expired. Run `claude` in a terminal on this Mac to sign in again, then resend your message."
             if "session" in _log_tail.lower():
                 self.new_session(instance)
                 return "\u274c Session error. New conversation started \u2014 please resend your message."
             return "\u274c Claude exited with an error." if not _log_tail else f"\u274c Claude error (check logs)"
 
+        if result_is_error:
+            lowered_result = final_result.lower()
+            instance.subprocess_pid = 0
+            instance.subprocess_log_file = ""
+            instance.subprocess_start_time = ""
+            if _is_auth_error(final_result):
+                self.new_session(instance)
+                return "\u274c Claude auth expired. Run `claude` in a terminal on this Mac to sign in again, then resend your message."
+            if "no conversation found with session id" in lowered_result or "session" in lowered_result:
+                self.new_session(instance)
+                return "\u274c Session error. New conversation started \u2014 please resend your message."
+            return "\u274c Claude error." if not final_result else f"\u274c Claude error: {final_result}"
+
         if final_result:
+            if _is_auth_error(final_result):
+                self.new_session(instance)
+                return "\u274c Claude auth expired. Run `claude` in a terminal on this Mac to sign in again, then resend your message."
             return final_result
         if _pending_text:
+            if _is_auth_error(_pending_text):
+                self.new_session(instance)
+                return "\u274c Claude auth expired. Run `claude` in a terminal on this Mac to sign in again, then resend your message."
             return _pending_text
         return "(empty response from Claude)"
