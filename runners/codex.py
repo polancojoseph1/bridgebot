@@ -54,17 +54,10 @@ class CodexRunner(RunnerBase):
         except OSError as exc:
             return f'{{"error": "Failed to start codex: {exc}"}}'
 
-<<<<<<< HEAD
-        res = await self.wait_for_process(proc, timeout=float(timeout))
-        if isinstance(res, str):
-            return res
-        stdout_data, stderr_data = res
-=======
         try:
             stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, float(timeout))
         except asyncio.TimeoutError:
             return '{"error": "timed out"}'
->>>>>>> main
 
         # Parse JSONL for agent_message items
         text_parts = []
