@@ -115,6 +115,23 @@ class RunnerBase(ABC):
             The response text.
         """
 
+    @staticmethod
+    async def wait_for_process(proc, timeout: float) -> tuple[bytes, bytes] | str:
+        """Wait for a process to complete with a timeout.
+
+        Returns (stdout_data, stderr_data) if successful.
+        Returns a JSON error string if it times out.
+        """
+        try:
+            return await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            return '{"error": "timed out"}'
+
     @abstractmethod
     async def stop(self, instance: Any) -> bool:
         """Stop the running process for a specific instance.

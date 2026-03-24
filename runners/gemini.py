@@ -69,22 +69,10 @@ class GeminiRunner(RunnerBase):
         except OSError as exc:
             return f'{{"error": "Failed to start gemini: {exc}"}}'
 
-        stdout_data = b""
-        stderr_data = b""
-
-        async def _read():
-            nonlocal stdout_data, stderr_data
-            stdout_data, stderr_data = await proc.communicate()
-
-        try:
-            await asyncio.wait_for(_read(), timeout=float(timeout))
-        except asyncio.TimeoutError:
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            return '{"error": "timed out"}'
+        res = await self.wait_for_process(proc, timeout=float(timeout))
+        if isinstance(res, str):
+            return res
+        stdout_data, stderr_data = res
 
         # Parse stream-json output for text
         text_parts = []

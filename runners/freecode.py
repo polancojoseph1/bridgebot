@@ -87,17 +87,10 @@ class FreeCodeBaseRunner(RunnerBase):
         except OSError as exc:
             return f'{{"error": "Failed to start freecode: {exc}"}}'
 
-        try:
-            stdout_data, stderr_data = await asyncio.wait_for(
-                proc.communicate(), timeout=float(timeout)
-            )
-        except asyncio.TimeoutError:
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            return '{"error": "timed out"}'
+        res = await self.wait_for_process(proc, timeout=float(timeout))
+        if isinstance(res, str):
+            return res
+        stdout_data, stderr_data = res
 
         # Parse NDJSON output — collect all text events
         text_parts = []
