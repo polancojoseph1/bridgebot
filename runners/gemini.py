@@ -268,9 +268,7 @@ class GeminiRunner(RunnerBase):
             except ProcessLookupError:
                 pass
             instance.process = None
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             return "\u23f0 Gemini took too long to respond (timed out)."
         finally:
             if system_prompt_file:
@@ -283,9 +281,7 @@ class GeminiRunner(RunnerBase):
 
         if instance.was_stopped:
             instance.was_stopped = False
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             return "\U0001f6d1 Stopped."
 
         if proc.returncode == 0:
@@ -297,9 +293,7 @@ class GeminiRunner(RunnerBase):
                 instance.last_output_tokens = _usage["output"]
                 instance.last_total_tokens = _usage["total"]
             # Clear subprocess tracking — process finished cleanly
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
 
         if proc.returncode != 0:
             logger.error("gemini exited %d (see log: %s)", proc.returncode, log_path)
@@ -309,9 +303,7 @@ class GeminiRunner(RunnerBase):
                     _log_tail = _f.read()[-2000:]
             except OSError:
                 _log_tail = ""
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             _log_lower = _log_tail.lower()
             if any(ind in _log_lower for ind in [
                 "terminalquotaerror", "resource_exhausted", "quota", "429", "too many requests"
