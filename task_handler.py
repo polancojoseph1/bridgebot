@@ -35,7 +35,7 @@ _CHECKBOX_RE = re.compile(r"^-\s+\[([ xX~!])\]\s+(.+)$")
 
 
 def _ensure_file() -> None:
-    """Create TODOS.md with header if it doesn't exist."""
+    """Create the tasks file and write the header if it does not exist."""
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
     if not TASK_FILE.exists():
         TASK_FILE.write_text(_HEADER, encoding="utf-8")
