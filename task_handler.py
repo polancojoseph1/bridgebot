@@ -35,14 +35,14 @@ _CHECKBOX_RE = re.compile(r"^-\s+\[([ xX~!])\]\s+(.+)$")
 
 
 def _ensure_file() -> None:
-    """Create TODOS.md with header if it doesn't exist."""
+    """Create the tasks file with header if it doesn't exist."""
     TASK_FILE.parent.mkdir(parents=True, exist_ok=True)
     if not TASK_FILE.exists():
         TASK_FILE.write_text(_HEADER, encoding="utf-8")
 
 
 def _parse_tasks() -> list[dict]:
-    """Parse TODOS.md and return list of {number, status, timestamp, text}.
+    """Parse the tasks file and return list of {number, status, timestamp, text}.
 
     Handles both numbered format and markdown checkbox format.
     """
@@ -78,7 +78,7 @@ def _parse_tasks() -> list[dict]:
 
 
 def _write_tasks(tasks: list[dict]) -> None:
-    """Rewrite TODOS.md with renumbered tasks and status markers."""
+    """Rewrite the tasks file with renumbered tasks and status markers."""
     lines = [_HEADER]
     for i, task in enumerate(tasks, 1):
         status = task.get("status", " ")
