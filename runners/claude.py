@@ -44,19 +44,6 @@ class ClaudeRunner(RunnerBase):
         instance.session_started = False
         instance.session_cost = 0.0
 
-    async def stop(self, instance) -> bool:
-        proc = instance.process
-        if proc is not None and proc.returncode is None:
-            instance.was_stopped = True
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            instance.process = None
-            return True
-        return False
-
     async def kill_all(self) -> int:
         return self._kill_processes("claude -p")
 
@@ -102,13 +89,7 @@ class ClaudeRunner(RunnerBase):
                 pass
             return '{"error": "timed out"}'
 
-        result = stdout_data.decode(errors="replace").strip()
-        if result:
-            return result
-        err = stderr_data.decode(errors="replace").strip()
-        if err:
-            return f"[stderr] {err}"
-        return "(no response)"
+        return self.format_query_result(None, stdout_data, stderr_data)
 
     # Env vars stripped from subprocess when running on behalf of a non-owner user
     _SENSITIVE_ENV_PATTERNS = re.compile(
@@ -360,9 +341,7 @@ class ClaudeRunner(RunnerBase):
             if str(_ce) == "plan_mode_detected":
                 await proc.wait()
                 instance.process = None
-                instance.subprocess_pid = 0
-                instance.subprocess_log_file = ""
-                instance.subprocess_start_time = ""
+                self._clear_subprocess_info(instance)
                 return "\u26a0\ufe0f Plan mode is not supported in this context \u2014 session reset. Please resend your request."
             raise
         except asyncio.TimeoutError:
@@ -372,9 +351,7 @@ class ClaudeRunner(RunnerBase):
             except ProcessLookupError:
                 pass
             instance.process = None
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             self.new_session(instance)  # reset session so next call doesn't hit "already in use"
             return "\u23f0 Claude took too long to respond (timed out)."
 
@@ -382,9 +359,7 @@ class ClaudeRunner(RunnerBase):
 
         if instance.was_stopped:
             instance.was_stopped = False
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             return "\U0001f6d1 Stopped."
 
         if (proc.returncode == 0 or _got_result) and not result_is_error:
@@ -399,9 +374,7 @@ class ClaudeRunner(RunnerBase):
                 instance.last_output_tokens = turn.get("output_tokens", 0)
             instance.session_cost += _usage["cost"]
             # Clear subprocess tracking — process finished cleanly
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
 
         if proc.returncode != 0 and not _got_result:
             logger.error("claude exited %d (see log: %s)", proc.returncode, log_path)
@@ -411,9 +384,7 @@ class ClaudeRunner(RunnerBase):
                     _log_tail = _f.read()[-2000:]
             except OSError:
                 _log_tail = ""
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             if _is_auth_error(_log_tail):
                 self.new_session(instance)
                 return "\u274c Claude auth expired. Run `claude` in a terminal on this Mac to sign in again, then resend your message."
@@ -424,9 +395,7 @@ class ClaudeRunner(RunnerBase):
 
         if result_is_error:
             lowered_result = final_result.lower()
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             if _is_auth_error(final_result):
                 self.new_session(instance)
                 return "\u274c Claude auth expired. Run `claude` in a terminal on this Mac to sign in again, then resend your message."
