@@ -210,7 +210,7 @@ def list_agents() -> list[AgentDefinition]:
 
 
 def update_agent(agent_id: str, **fields) -> AgentDefinition | None:
-    """Update agent fields. Supported: name, agent_type, system_prompt, skills, model, collaborators.
+    """Update agent fields. Supported: name, agent_type, system_prompt, skills, model, collaborators, proactive, proactive_schedule, proactive_task, ephemeral.
     Returns updated agent or None if not found."""
     agent = get_agent(agent_id)
     if not agent:
@@ -222,26 +222,22 @@ def update_agent(agent_id: str, **fields) -> AgentDefinition | None:
     if not updates:
         return agent
 
-    # Apply updates to the retrieved object
+    agent.updated_at = time.time()
     for k, v in updates.items():
         setattr(agent, k, v)
-
-    agent.updated_at = time.time()
 
     with _get_conn() as conn:
         conn.execute(
             """UPDATE agents SET
                name = ?, agent_type = ?, system_prompt = ?, skills = ?, model = ?,
-               collaborators = ?, updated_at = ?, proactive = ?,
-               proactive_schedule = ?, proactive_task = ?, ephemeral = ?
+               collaborators = ?, proactive = ?, proactive_schedule = ?, proactive_task = ?,
+               ephemeral = ?, updated_at = ?
                WHERE id = ?""",
             (
-                agent.name, agent.agent_type, agent.system_prompt,
-                json.dumps(agent.skills), agent.model,
-                json.dumps(agent.collaborators), agent.updated_at,
-                int(agent.proactive), agent.proactive_schedule,
-                agent.proactive_task, int(agent.ephemeral),
-                agent_id
+                agent.name, agent.agent_type, agent.system_prompt, json.dumps(agent.skills),
+                agent.model, json.dumps(agent.collaborators), int(agent.proactive),
+                agent.proactive_schedule, agent.proactive_task, int(agent.ephemeral),
+                agent.updated_at, agent.id
             )
         )
 
@@ -317,16 +313,16 @@ def update_skill(skill_id: str, **fields) -> SkillDefinition | None:
     if not updates:
         return skill
 
-    # Apply updates to the retrieved object
+    skill.updated_at = time.time()
     for k, v in updates.items():
         setattr(skill, k, v)
 
-    skill.updated_at = time.time()
-
     with _get_conn() as conn:
         conn.execute(
-            "UPDATE skills SET description = ?, prompt = ?, updated_at = ? WHERE id = ?",
-            (skill.description, skill.prompt, skill.updated_at, skill_id)
+            """UPDATE skills SET
+               description = ?, prompt = ?, updated_at = ?
+               WHERE id = ?""",
+            (skill.description, skill.prompt, skill.updated_at, skill.id)
         )
 
     logger.info("Updated skill %s: %s", skill_id, list(updates.keys()))
