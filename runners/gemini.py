@@ -56,7 +56,7 @@ class GeminiRunner(RunnerBase):
         except FileNotFoundError:
             return '{"error": "gemini CLI not found"}'
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), True)
         cmd = [binary, "--yolo", "--output-format", "stream-json", "-p", prompt]
 
         try:
@@ -130,7 +130,7 @@ class GeminiRunner(RunnerBase):
         except FileNotFoundError:
             return "\u274c Error: gemini CLI not found. Is Gemini CLI installed?"
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), user_is_owner)
         system_prompt_file = None
 
         # Build system prompt

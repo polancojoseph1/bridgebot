@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import os
 import platform
+import re
 import shutil
 import subprocess
 from typing import AsyncGenerator, Callable, Awaitable, Any
@@ -34,6 +35,29 @@ class RunnerBase(ABC):
     # Subclasses set these
     name: str = ""              # e.g. "claude", "gemini", "codex"
     cli_command: str = ""       # binary name to find in PATH (e.g. "claude")
+
+    # Env vars stripped from subprocess when running on behalf of a non-owner user
+    _SENSITIVE_ENV_PATTERNS = re.compile(
+        r"^(AWS_|GOOGLE_|GCP_|GCLOUD_|GITHUB_|GH_|GITLAB_|AZURE_|STRIPE_|"
+        r"TWILIO_|SENDGRID_|CLOUDFLARE_|DIGITALOCEAN_|HEROKU_|VERCEL_|NETLIFY_|"
+        r"OPENAI_|GEMINI_|COHERE_|MISTRAL_|TOGETHER_)",
+        re.IGNORECASE,
+    )
+    _SENSITIVE_ENV_EXACT = {
+        "SSH_AUTH_SOCK", "SSH_AGENT_PID",
+        "INTERNAL_API_KEY", "TELEGRAM_BOT_TOKEN", "COLLAB_TOKEN",
+        "ALLOWED_USER_ID", "ALLOWED_USER_IDS", "USER_NAMES",
+    }
+
+    def build_env(self, base_env: dict, user_is_owner: bool = True) -> dict:
+        """Build subprocess environment. Strip sensitive vars for non-owner users."""
+        if user_is_owner:
+            return base_env
+        return {
+            k: v for k, v in base_env.items()
+            if k not in self._SENSITIVE_ENV_EXACT
+            and not self._SENSITIVE_ENV_PATTERNS.match(k)
+        }
 
     @staticmethod
     def _format_thinking(text: str, max_chars: int = 3000) -> str:

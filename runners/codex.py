@@ -56,7 +56,7 @@ class CodexRunner(RunnerBase):
         except FileNotFoundError:
             return '{"error": "codex CLI not found"}'
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), True)
         cmd = [
             binary, "exec", prompt,
             "--json",
@@ -243,7 +243,7 @@ class CodexRunner(RunnerBase):
         else:
             full_prompt = base_message
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), user_is_owner)
 
         base_flags = [
             "--json",

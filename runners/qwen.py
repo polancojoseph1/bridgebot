@@ -58,7 +58,7 @@ class QwenRunner(RunnerBase):
         except FileNotFoundError:
             return '{"error": "qwen CLI not found"}'
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), True)
         cmd = [binary, "--yolo", "--output-format", "text", prompt]
 
         try:
@@ -109,7 +109,7 @@ class QwenRunner(RunnerBase):
         except FileNotFoundError:
             return "\u274c Error: qwen CLI not found. Is Qwen Coder installed? (npm install -g @qwen-code/qwen-code)"
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), user_is_owner)
         session_id = instance.session_id
         session_started = instance.session_started
 

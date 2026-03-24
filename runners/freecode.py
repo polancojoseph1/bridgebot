@@ -74,7 +74,7 @@ class FreeCodeBaseRunner(RunnerBase):
         except FileNotFoundError:
             return '{"error": "freecode CLI not found"}'
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), True)
         cmd = [binary, "run", "--format", "json", prompt]
 
         try:
@@ -143,7 +143,7 @@ class FreeCodeBaseRunner(RunnerBase):
         except FileNotFoundError:
             return "\u274c Error: freecode CLI not found. Install from https://github.com/polancojoseph1/freecode"
 
-        env = dict(os.environ)
+        env = self.build_env(dict(os.environ), user_is_owner)
         session_started = instance.session_started
 
         # Per-instance OpenRouter credentials (Bridge Cloud per-user keys)
