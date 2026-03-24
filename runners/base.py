@@ -195,6 +195,28 @@ class RunnerBase(ABC):
         return os.path.join(_LOG_DIR, f"{bot_name}_{chat_id}_{instance_id}.log")
 
     @staticmethod
+    async def read_with_timeout(proc: asyncio.subprocess.Process, timeout: float) -> tuple[bytes, bytes]:
+        """Read from a subprocess with a timeout, killing it if it times out.
+
+        Returns:
+            A tuple of (stdout_data, stderr_data).
+        Raises:
+            asyncio.TimeoutError: If the process times out.
+        """
+        async def _read():
+            return await proc.communicate()
+
+        try:
+            return await asyncio.wait_for(_read(), timeout=timeout)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            raise
+
+    @staticmethod
     def get_pid_start_time(pid: int) -> str:
         """Return a string identifier for the process start time, for recycling detection."""
         try:
