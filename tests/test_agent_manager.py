@@ -9,9 +9,10 @@ os.environ.setdefault("CLI_RUNNER", "generic")
 os.environ.setdefault("CLI_COMMAND", "echo")
 os.environ.setdefault("ENV_FILE", "/dev/null")
 
+from unittest.mock import Mock, MagicMock
 from agent_registry import AgentDefinition
 from instance_manager import InstanceManager, Instance
-from agent_manager import parse_pipeline_command
+from agent_manager import parse_pipeline_command, get_running_instance, _agent_instance_map
 
 import agent_manager
 
@@ -79,3 +80,62 @@ def test_parse_pipeline_command(command, expected_agents, expected_task):
     agents, task = parse_pipeline_command(command)
     assert agents == expected_agents
     assert task == expected_task
+
+
+# --- get_running_instance tests ---
+
+@pytest.fixture(autouse=False)
+def clean_agent_map():
+    _agent_instance_map.clear()
+    yield
+    _agent_instance_map.clear()
+
+
+def test_get_running_instance_in_map_and_exists(clean_agent_map):
+    mock_instances = Mock()
+    mock_inst = MagicMock()
+    mock_inst.agent_id = "agent_1"
+
+    _agent_instance_map["agent_1"] = 123
+    mock_instances.get.return_value = mock_inst
+
+    result = get_running_instance("agent_1", mock_instances)
+
+    assert result is mock_inst
+    mock_instances.get.assert_called_once_with(123)
+    mock_instances.list_all.assert_not_called()
+
+
+def test_get_running_instance_in_map_but_removed(clean_agent_map):
+    mock_instances = Mock()
+    mock_instances.get.return_value = None
+
+    mock_inst_other = MagicMock()
+    mock_inst_other.agent_id = "agent_other"
+    mock_instances.list_all.return_value = [mock_inst_other]
+
+    _agent_instance_map["agent_2"] = 999
+
+    result = get_running_instance("agent_2", mock_instances)
+
+    assert result is None
+    assert "agent_2" not in _agent_instance_map
+    mock_instances.get.assert_called_once_with(999)
+    mock_instances.list_all.assert_called_once()
+
+
+def test_get_running_instance_fallback_scan(clean_agent_map):
+    mock_instances = Mock()
+
+    mock_inst = MagicMock()
+    mock_inst.agent_id = "agent_3"
+    mock_inst.id = 456
+
+    mock_instances.list_all.return_value = [mock_inst]
+
+    assert "agent_3" not in _agent_instance_map
+
+    result = get_running_instance("agent_3", mock_instances)
+
+    assert result is mock_inst
+    assert _agent_instance_map["agent_3"] == 456
