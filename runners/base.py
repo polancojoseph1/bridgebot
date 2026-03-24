@@ -297,3 +297,21 @@ class RunnerBase(ABC):
         elif name:
             return f"\U0001f527 {name}"
         return ""
+
+    @staticmethod
+    def start_keepalive_task(on_progress: Callable[[str], Awaitable[None]] | None, last_progress_time: list[float]) -> asyncio.Task:
+        """Start a background task to send a heartbeat when no progress is sent for a while.
+
+        last_progress_time must be a single-element list containing the time.monotonic() float.
+        """
+        _KEEPALIVE_INTERVAL = 180  # seconds between "still working" pings
+
+        async def _keepalive():
+            import time
+            while True:
+                await asyncio.sleep(30)
+                if on_progress and time.monotonic() - last_progress_time[0] >= _KEEPALIVE_INTERVAL:
+                    last_progress_time[0] = time.monotonic()
+                    await on_progress("⏳ Still working...")
+
+        return asyncio.create_task(_keepalive())

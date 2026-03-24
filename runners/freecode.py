@@ -335,17 +335,7 @@ class FreeCodeBaseRunner(RunnerBase):
 
             await proc.wait()
 
-        _KEEPALIVE_INTERVAL = 180  # seconds between "still working" pings
-
-        async def _keepalive():
-            """Send a periodic heartbeat when no progress has been sent for a while."""
-            while True:
-                await asyncio.sleep(30)
-                if on_progress and time.monotonic() - _last_progress_time[0] >= _KEEPALIVE_INTERVAL:
-                    _last_progress_time[0] = time.monotonic()
-                    await on_progress("\u23f3 Still working...")
-
-        _keepalive_task = asyncio.create_task(_keepalive())
+        _keepalive_task = self.start_keepalive_task(on_progress, _last_progress_time)
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
         except asyncio.TimeoutError:
