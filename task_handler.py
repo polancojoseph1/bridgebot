@@ -78,7 +78,7 @@ def _parse_tasks() -> list[dict]:
 
 
 def _write_tasks(tasks: list[dict]) -> None:
-    """Rewrite TODOS.md with renumbered tasks and status markers."""
+    """Overwrite the tasks file with renumbered tasks and status markers."""
     lines = [_HEADER]
     for i, task in enumerate(tasks, 1):
         status = task.get("status", " ")
