@@ -57,7 +57,9 @@ async def test_route_message_invalid_instance_id(instances):
 @respx.mock
 async def test_route_message_timeout_exception(instances):
     # Mock a timeout exception
-    respx.post(OLLAMA_URL).mock(side_effect=httpx.TimeoutException("Timeout"))
+    # httpx.TimeoutException requires a 'request' argument in modern versions
+    mock_request = httpx.Request("POST", OLLAMA_URL)
+    respx.post(OLLAMA_URL).mock(side_effect=httpx.TimeoutException("Timeout", request=mock_request))
 
     result = await route_message("This will timeout", instances)
     assert result is None
