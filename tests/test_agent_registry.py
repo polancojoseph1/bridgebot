@@ -58,7 +58,7 @@ def test_update_agent_success(mock_db):
 
 def test_update_agent_lists(mock_db):
     """Test successful update of list fields (skills, collaborators)."""
-    agent = agent_registry.create_agent(
+    agent_registry.create_agent(
         agent_id="agent2",
         name="List Agent",
         skills=["skill1"],
