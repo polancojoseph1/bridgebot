@@ -22,29 +22,9 @@ class CodexRunner(RunnerBase):
     name = "codex"
     cli_command = "codex"
 
-    def __init__(self):
-        from config import CLI_TIMEOUT, CLI_SYSTEM_PROMPT, MEMORY_DIR, MEMORY_ENABLED, USER_NAME
-        self.timeout = CLI_TIMEOUT
-        self.memory_dir = MEMORY_DIR
-        self.system_prompt = (CLI_SYSTEM_PROMPT.replace("{MEMORY_DIR}", MEMORY_DIR).replace("{OWNER_NAME}", USER_NAME or "the user") if CLI_SYSTEM_PROMPT else CLI_SYSTEM_PROMPT)
-        self.memory_enabled = MEMORY_ENABLED
-
     def new_session(self, instance) -> None:
         instance.session_started = False
         instance.adapter_data.pop("thread_id", None)
-
-    async def stop(self, instance) -> bool:
-        proc = instance.process
-        if proc is not None and proc.returncode is None:
-            instance.was_stopped = True
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            instance.process = None
-            return True
-        return False
 
     async def kill_all(self) -> int:
         return self._kill_processes("codex exec")
@@ -74,10 +54,17 @@ class CodexRunner(RunnerBase):
         except OSError as exc:
             return f'{{"error": "Failed to start codex: {exc}"}}'
 
+<<<<<<< HEAD
         res = await self.wait_for_process(proc, timeout=float(timeout))
         if isinstance(res, str):
             return res
         stdout_data, stderr_data = res
+=======
+        try:
+            stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, float(timeout))
+        except asyncio.TimeoutError:
+            return '{"error": "timed out"}'
+>>>>>>> main
 
         # Parse JSONL for agent_message items
         text_parts = []
@@ -96,13 +83,7 @@ class CodexRunner(RunnerBase):
             except json.JSONDecodeError:
                 continue
 
-        if text_parts:
-            return "".join(text_parts)
-
-        err = stderr_data.decode(errors="replace").strip()
-        if err:
-            return f"[stderr] {err}"
-        return "(no response)"
+        return self.format_query_result(text_parts, None, stderr_data)
 
     def _format_codex_progress(self, item: dict) -> str:
         """Format a codex JSONL item into a progress string."""
@@ -347,18 +328,14 @@ class CodexRunner(RunnerBase):
             except ProcessLookupError:
                 pass
             instance.process = None
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             return "\u23f0 Codex took too long to respond (timed out)."
 
         instance.process = None
 
         if instance.was_stopped:
             instance.was_stopped = False
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             return "\U0001f6d1 Stopped."
 
         if proc.returncode == 0:
@@ -371,15 +348,11 @@ class CodexRunner(RunnerBase):
                 instance.last_output_tokens = _usage["output"]
                 instance.last_total_tokens = _usage["input"] + _usage["output"]
             # Clear subprocess tracking — process finished cleanly
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
 
         if proc.returncode != 0:
             logger.error("codex exited %d (see log: %s)", proc.returncode, log_path)
-            instance.subprocess_pid = 0
-            instance.subprocess_log_file = ""
-            instance.subprocess_start_time = ""
+            self._clear_subprocess_info(instance)
             return "\u274c Codex exited with an error."
 
         if assistant_text_parts:
