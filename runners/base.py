@@ -164,22 +164,6 @@ class RunnerBase(ABC):
         return 0
 
     @staticmethod
-<<<<<<< HEAD
-    async def wait_for_process(proc: asyncio.subprocess.Process, timeout: float) -> tuple[bytes, bytes]:
-        """Wait for a process to communicate with a timeout, killing it on timeout.
-
-        Raises asyncio.TimeoutError if the timeout is reached.
-        """
-        try:
-            return await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            raise
-=======
     def decode_cli_output(stdout_data: bytes, stderr_data: bytes, err_prefix: str = "[stderr] ", strip_ansi: bool = False, max_err_len: int = 0) -> str:
         """Decode stdout and stderr from a CLI process into a single response string."""
         result = stdout_data.decode(errors="replace").strip()
@@ -195,7 +179,6 @@ class RunnerBase(ABC):
                 err = err[:max_err_len]
             return f"{err_prefix}{err}"
         return "(no response)"
->>>>>>> main
 
     @staticmethod
     def _kill_processes(pattern: str) -> int:

@@ -50,11 +50,7 @@ class GeminiRunner(RunnerBase):
             return f'{{"error": "Failed to start gemini: {exc}"}}'
 
         try:
-<<<<<<< HEAD
-            stdout_data, stderr_data = await RunnerBase.wait_for_process(proc, float(timeout))
-=======
             stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, float(timeout))
->>>>>>> main
         except asyncio.TimeoutError:
             return '{"error": "timed out"}'
 
