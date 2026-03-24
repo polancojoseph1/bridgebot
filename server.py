@@ -2053,6 +2053,28 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         else:
             await send_message(chat_id, f"Nothing running and queue is empty.{label}")
 
+    elif cmd == "/trim":
+        # Kill idle instances (not busy, no queued messages), keep busy ones
+        all_insts = instances.list_all(for_owner_id=owner_id)
+        idle = [i for i in all_insts if not i.processing and (i.queue is None or i.queue.qsize() == 0)]
+        busy = [i for i in all_insts if i not in idle]
+        # Always keep at least one instance (the active one or first busy)
+        keep = instances.get_active_for(owner_id)
+        to_remove = [i for i in idle if i.id != keep.id]
+        for inst in to_remove:
+            await runner.stop(inst)
+            inst.clear_queue()
+            if inst.current_task and not inst.current_task.done():
+                inst.current_task.cancel()
+            instances.remove(inst.id, owner_id=owner_id)
+        # If active was idle and removed, switch to a busy one or reset
+        if not busy and keep in to_remove:
+            pass  # shouldn't happen since we kept keep
+        msg = f"✂️ Trimmed {len(to_remove)} idle instance{'s' if len(to_remove) != 1 else ''}. {len(busy)} busy instance{'s' if len(busy) != 1 else ''} kept."
+        if not to_remove:
+            msg = "Nothing to trim — no idle instances found."
+        await send_message(chat_id, msg)
+
     elif cmd == "/kill":
         # Nuclear option: kill everything across all instances
         for inst in instances.list_all():
@@ -2122,6 +2144,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             "**Commands:**\n\n"
             "**Control**\n"
             "/stop \u2014 Stop current task & clear queue\n"
+            "/trim \u2014 Kill idle instances, keep busy ones\n"
             "/kill \u2014 Force-kill all processes across all instances\n"
             "/clear \u2014 Kill all instances, reset to one Default\n"
             "/new \u2014 Reset conversation for the active instance\n"
