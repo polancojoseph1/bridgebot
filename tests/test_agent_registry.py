@@ -11,6 +11,9 @@ import agent_registry
 from agent_registry import (
     create_agent,
     get_agent,
+    create_skill,
+    get_skill,
+    SkillDefinition,
     AgentDefinition,
     DEFAULT_AGENT_MODEL,
 )
@@ -302,3 +305,50 @@ def test_update_agent_no_fields(clean_registry):
     assert updated_agent is not None
     assert updated_agent.name == "No Fields Agent"
     assert updated_agent.updated_at == initial_updated_at
+
+
+# --- create_skill tests ---
+
+def test_create_skill_success(clean_registry):
+    """Test creating a new skill successfully."""
+    skill = create_skill(
+        skill_id="test_skill",
+        description="A test skill",
+        prompt="Test prompt",
+        is_builtin=False
+    )
+
+    assert isinstance(skill, SkillDefinition)
+    assert skill.id == "test_skill"
+    assert skill.description == "A test skill"
+    assert skill.prompt == "Test prompt"
+    assert not skill.is_builtin
+
+    fetched_skill = get_skill("test_skill")
+    assert fetched_skill is not None
+    assert fetched_skill.id == "test_skill"
+
+def test_create_skill_duplicate_raises_value_error(clean_registry):
+    """Test that creating a duplicate skill raises a ValueError."""
+    create_skill(skill_id="dup_skill", description="First skill")
+
+    with pytest.raises(ValueError, match="Skill 'dup_skill' already exists"):
+        create_skill(skill_id="dup_skill", description="Second skill")
+
+def test_create_skill_builtin(clean_registry):
+    """Test creating a builtin skill."""
+    skill = create_skill(skill_id="builtin_skill", is_builtin=True)
+    assert skill.is_builtin is True
+
+    fetched = get_skill("builtin_skill")
+    assert fetched is not None
+    assert fetched.is_builtin is True
+
+def test_create_skill_defaults(clean_registry):
+    """Test creating a skill with default values."""
+    skill = create_skill("minimal_skill")
+
+    assert skill.id == "minimal_skill"
+    assert skill.description == ""
+    assert skill.prompt == ""
+    assert skill.is_builtin is False
