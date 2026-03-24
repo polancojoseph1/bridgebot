@@ -18,7 +18,6 @@ import os
 import platform
 import shutil
 import subprocess
-import uuid
 from typing import AsyncGenerator, Callable, Awaitable, Any
 
 # Subprocess logger wrapper script path
@@ -128,11 +127,7 @@ class RunnerBase(ABC):
 
         Returns True if a process was actually stopped.
         """
-<<<<<<< HEAD
-        proc = instance.process
-=======
         proc = getattr(instance, "process", None)
->>>>>>> main
         if proc is not None and proc.returncode is None:
             instance.was_stopped = True
             try:
@@ -144,10 +139,9 @@ class RunnerBase(ABC):
             return True
         return False
 
+    @abstractmethod
     def new_session(self, instance: Any) -> None:
         """Reset session state so the next message starts a fresh conversation."""
-        instance.session_id = str(uuid.uuid4())
-        instance.session_started = False
 
     def _clear_subprocess_info(self, instance: Any) -> None:
         """Clear subprocess tracking info from the instance."""
