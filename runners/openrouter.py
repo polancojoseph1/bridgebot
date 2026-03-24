@@ -91,8 +91,8 @@ class OpenRouterRunner(RunnerBase):
     async def kill_all(self) -> int:
         return 0
 
-    async def stop(self, instance) -> None:
-        pass
+    async def stop(self, instance) -> bool:
+        return False
 
     def new_session(self, instance) -> None:
         if instance.session_id:
