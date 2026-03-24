@@ -12,7 +12,6 @@ import logging
 import os
 import sys
 import tempfile
-import uuid
 from typing import Callable, Awaitable
 
 from runners.base import RunnerBase, _SUBPROCESS_LOGGER
@@ -30,23 +29,6 @@ class QwenRunner(RunnerBase):
         self.memory_dir = MEMORY_DIR
         self.system_prompt = (CLI_SYSTEM_PROMPT.replace("{MEMORY_DIR}", MEMORY_DIR).replace("{OWNER_NAME}", USER_NAME or "the user") if CLI_SYSTEM_PROMPT else CLI_SYSTEM_PROMPT)
         self.memory_enabled = MEMORY_ENABLED
-
-    def new_session(self, instance) -> None:
-        instance.session_id = str(uuid.uuid4())
-        instance.session_started = False
-
-    async def stop(self, instance) -> bool:
-        proc = instance.process
-        if proc is not None and proc.returncode is None:
-            instance.was_stopped = True
-            try:
-                proc.kill()
-                await proc.wait()
-            except ProcessLookupError:
-                pass
-            instance.process = None
-            return True
-        return False
 
     async def kill_all(self) -> int:
         return self._kill_processes("qwen -p")
