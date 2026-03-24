@@ -10,7 +10,11 @@ import logging
 import time
 from typing import Callable, Awaitable
 
+import os
+
 import httpx
+
+from runners.base import RunnerBase
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +29,6 @@ _last_access: dict[str, float] = {}
 
 # Cleanup conversations older than 2 hours
 _HISTORY_TTL = 7200
-
-from runners.base import RunnerBase
-import os
 
 class OpenRouterRunner(RunnerBase):
     name = "openrouter"
