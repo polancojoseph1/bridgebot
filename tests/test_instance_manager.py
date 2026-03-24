@@ -1,7 +1,6 @@
-import asyncio
 import pytest
 from unittest.mock import MagicMock
-from instance_manager import InstanceManager, Instance
+from instance_manager import InstanceManager
 
 @pytest.fixture
 def manager():
@@ -30,7 +29,7 @@ def test_remove_last_instance(manager):
     assert manager.get(1) is not None
 
 def test_remove_non_active_instance(manager):
-    inst = manager.create("Second", owner_id=0) # Now active is 2
+    manager.create("Second", owner_id=0) # Now active is 2
     assert manager.count == 2
     assert manager.active_id == 2
 
@@ -42,8 +41,8 @@ def test_remove_non_active_instance(manager):
     assert manager.active_id == 2 # active id shouldn't change
 
 def test_remove_active_global_instance(manager):
-    inst1 = manager.get(1)
-    inst2 = manager.create("Second", owner_id=0) # active becomes 2
+    manager.get(1)
+    manager.create("Second", owner_id=0) # active becomes 2
 
     # Remove active
     removed = manager.remove(2, owner_id=0)
