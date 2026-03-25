@@ -4,6 +4,7 @@ import sqlite3
 import uuid
 
 import logging
+import secrets
 import os
 import re
 import sys
@@ -971,7 +972,7 @@ class DirectQueryRequest(BaseModel):
 async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str = Header(default="")):
     """Stateless AI query endpoint for automation tools (n8n, scripts).
     Requires X-API-Key header matching INTERNAL_API_KEY."""
-    if not INTERNAL_API_KEY or not x_api_key or x_api_key != INTERNAL_API_KEY:
+    if not INTERNAL_API_KEY or not x_api_key or not secrets.compare_digest(x_api_key, INTERNAL_API_KEY):
         logger.warning("Rejected /query — missing or invalid X-API-Key")
         return JSONResponse(status_code=401, content={"ok": False, "error": "Unauthorized"})
     try:
@@ -1019,7 +1020,7 @@ async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str
 @app.get("/prompts")
 async def get_prompts(x_api_key: str = Header(default=""), name: Optional[str] = None):
     """Return prompts — requires X-API-Key."""
-    if not INTERNAL_API_KEY or x_api_key != INTERNAL_API_KEY:
+    if not INTERNAL_API_KEY or not x_api_key or not secrets.compare_digest(x_api_key, INTERNAL_API_KEY):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     if name:
         if name not in PROMPTS:
@@ -2771,14 +2772,15 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             if not peers:
                 await send_message(chat_id, "No peers configured.")
                 return
-            sent = 0
-            failed = 0
-            for peer_name, peer in peers.items():
-                ok = await collab_client.broadcast_to_peer(peer, arg, from_name=COLLAB_INSTANCE_NAME)
-                if ok:
-                    sent += 1
-                else:
-                    failed += 1
+
+            coroutines = [
+                collab_client.broadcast_to_peer(peer, arg, from_name=COLLAB_INSTANCE_NAME)
+                for peer in peers.values()
+            ]
+            results = await asyncio.gather(*coroutines)
+
+            sent = sum(1 for ok in results if ok)
+            failed = len(results) - sent
             await send_message(
                 chat_id,
                 f"Broadcast sent to {sent} peer(s)." + (f" {failed} failed." if failed else ""),
@@ -2960,14 +2962,15 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             if not peers:
                 await send_message(chat_id, "No peers configured.")
                 return
-            sent = 0
-            failed = 0
-            for peer_name, peer in peers.items():
-                ok = await bn_client.broadcast_to_peer(peer, arg, from_name=BRIDGENET_NODE_NAME)
-                if ok:
-                    sent += 1
-                else:
-                    failed += 1
+
+            coroutines = [
+                bn_client.broadcast_to_peer(peer, arg, from_name=BRIDGENET_NODE_NAME)
+                for peer in peers.values()
+            ]
+            results = await asyncio.gather(*coroutines)
+
+            sent = sum(1 for ok in results if ok)
+            failed = len(results) - sent
             await send_message(
                 chat_id,
                 f"Broadcast sent to {sent} peer(s)." + (f" {failed} failed." if failed else ""),
