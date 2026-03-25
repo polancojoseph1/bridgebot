@@ -106,11 +106,11 @@ def markdown_to_telegram_html(text: str) -> str:
     # Headers (## ...) → plain text, strip the # prefix
     text = re.sub(r"^#{1,6}\s+(.+)$", r"\1", text, flags=re.MULTILINE)
 
-    # Bold (**...**) → plain text, strip the **
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    # Bold (**...**) → <b>...</b>
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
 
-    # Italic (*...*) → plain text, strip the *
-    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    # Italic (*...*) → <i>...</i>
+    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
 
     # Horizontal rules → remove
     text = re.sub(r"^---+$", "", text, flags=re.MULTILINE)
