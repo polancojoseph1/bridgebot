@@ -2644,14 +2644,15 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             if not peers:
                 await send_message(chat_id, "No peers configured.")
                 return
-            sent = 0
-            failed = 0
-            for peer_name, peer in peers.items():
-                ok = await collab_client.broadcast_to_peer(peer, arg, from_name=COLLAB_INSTANCE_NAME)
-                if ok:
-                    sent += 1
-                else:
-                    failed += 1
+
+            coroutines = [
+                collab_client.broadcast_to_peer(peer, arg, from_name=COLLAB_INSTANCE_NAME)
+                for peer in peers.values()
+            ]
+            results = await asyncio.gather(*coroutines)
+
+            sent = sum(1 for ok in results if ok)
+            failed = len(results) - sent
             await send_message(
                 chat_id,
                 f"Broadcast sent to {sent} peer(s)." + (f" {failed} failed." if failed else ""),
@@ -2833,14 +2834,15 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             if not peers:
                 await send_message(chat_id, "No peers configured.")
                 return
-            sent = 0
-            failed = 0
-            for peer_name, peer in peers.items():
-                ok = await bn_client.broadcast_to_peer(peer, arg, from_name=BRIDGENET_NODE_NAME)
-                if ok:
-                    sent += 1
-                else:
-                    failed += 1
+
+            coroutines = [
+                bn_client.broadcast_to_peer(peer, arg, from_name=BRIDGENET_NODE_NAME)
+                for peer in peers.values()
+            ]
+            results = await asyncio.gather(*coroutines)
+
+            sent = sum(1 for ok in results if ok)
+            failed = len(results) - sent
             await send_message(
                 chat_id,
                 f"Broadcast sent to {sent} peer(s)." + (f" {failed} failed." if failed else ""),
