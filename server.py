@@ -1,5 +1,7 @@
 import asyncio
 import json
+import sqlite3
+import uuid
 
 import logging
 import secrets
@@ -147,6 +149,41 @@ _chat_debounce: dict = {}    # chat_id -> [QueuedMessage, ...]
 _chat_timers: dict = {}      # chat_id -> asyncio.TimerHandle
 _MG_WAIT  = 0.8              # seconds to collect album frames
 _DEBOUNCE = 0.4              # seconds to group text+photo sent in quick succession
+
+# ---------------------------------------------------------------------------
+# Antigravity bridge helpers
+# ---------------------------------------------------------------------------
+_AG_DB = Path.home() / ".jefe" / "antigravity-bridge" / "tasks.db"
+
+def _ag_queue_task(prompt: str, chat_id: int, bot_token: str) -> str:
+    """Insert a task into the Antigravity queue DB. Returns task_id."""
+    _AG_DB.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_AG_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY, prompt TEXT NOT NULL,
+            chat_id INTEGER NOT NULL, bot_token TEXT NOT NULL,
+            status TEXT DEFAULT 'pending', result TEXT,
+            created_at INTEGER DEFAULT (strftime('%s','now')),
+            updated_at INTEGER DEFAULT (strftime('%s','now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS questions (
+            id TEXT PRIMARY KEY, question TEXT NOT NULL,
+            reply TEXT, status TEXT DEFAULT 'pending',
+            created_at INTEGER DEFAULT (strftime('%s','now')),
+            updated_at INTEGER DEFAULT (strftime('%s','now'))
+        )
+    """)
+    task_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO tasks (id, prompt, chat_id, bot_token) VALUES (?,?,?,?)",
+        (task_id, prompt, chat_id, bot_token),
+    )
+    conn.commit()
+    conn.close()
+    return task_id
 
 
 
@@ -2621,6 +2658,58 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                 "<b>/agent proactive &lt;name&gt; on/off/clear</b> — Toggle or wipe\n\n"
                 "To create/edit/delete agents, just tell me what you need.",
                 parse_mode="HTML")
+
+    elif cmd == "/ag":
+        task = text[len("/ag"):].strip()
+        if not task:
+            await send_message(
+                chat_id,
+                "Usage: /ag &lt;task&gt;\n\nExample: /ag refactor my telegram_handler.py error handling\n\n"
+                "Queues the task in Antigravity. Make sure the Antigravity app is open with an agent running.",
+                parse_mode="HTML",
+            )
+            return
+        task_id = _ag_queue_task(task, chat_id, TELEGRAM_BOT_TOKEN)
+        short_id = task_id[:8]
+        await send_message(
+            chat_id,
+            f"🚀 <b>Antigravity task queued</b>\n\n"
+            f"<code>{task[:120]}{'…' if len(task) > 120 else ''}</code>\n\n"
+            f"ID: <code>{short_id}</code>\n\n"
+            f"Open Antigravity and run your agent — it will pick this up via the <b>telegram-bridge</b> MCP tool. "
+            f"Result will be sent here automatically when done.",
+            parse_mode="HTML",
+        )
+
+    elif cmd == "/agr":
+        # Reply to an Antigravity question: /agr <question_id_prefix> <answer>
+        parts = text.split(maxsplit=2)
+        if len(parts) < 3:
+            await send_message(
+                chat_id,
+                "Usage: /agr &lt;question_id&gt; &lt;your answer&gt;\n\n"
+                "Antigravity will send you a question_id when it asks something. "
+                "Reply using this command to send your answer back.",
+                parse_mode="HTML",
+            )
+            return
+        qid_prefix = parts[1].strip()
+        answer = parts[2].strip()
+        conn = sqlite3.connect(_AG_DB)
+        row = conn.execute(
+            "SELECT id FROM questions WHERE id LIKE ?", (qid_prefix + "%",)
+        ).fetchone()
+        if not row:
+            conn.close()
+            await send_message(chat_id, f"Question ID <code>{qid_prefix}</code> not found.", parse_mode="HTML")
+            return
+        conn.execute(
+            "UPDATE questions SET reply=?, status='answered', updated_at=strftime('%s','now') WHERE id=?",
+            (answer, row[0]),
+        )
+        conn.commit()
+        conn.close()
+        await send_message(chat_id, "✅ Reply sent to Antigravity.", parse_mode="HTML")
 
     elif cmd == "/orch":
         task = text[len("/orch"):].strip()
