@@ -80,8 +80,7 @@ def _convert_markdown_tables(text: str) -> str:
 def markdown_to_telegram_html(text: str) -> str:
     """Convert GitHub-flavored markdown to Telegram-compatible HTML.
 
-    Keep code blocks formatted; strip bold/italic/headers so responses
-    read as plain conversational text.
+    Converts bold/italic/code to HTML tags. Strips headers to plain text.
     """
     # Escape HTML entities first so Claude's output can't inject tags
     text = html.escape(text)
@@ -107,10 +106,10 @@ def markdown_to_telegram_html(text: str) -> str:
     text = re.sub(r"^#{1,6}\s+(.+)$", r"\1", text, flags=re.MULTILINE)
 
     # Bold (**...**) → <b>...</b>
-    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.DOTALL)
 
     # Italic (*...*) → <i>...</i>
-    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
+    text = re.sub(r"(?<!\w)\*([^*]+?)\*(?!\w)", r"<i>\1</i>", text)
 
     # Horizontal rules → remove
     text = re.sub(r"^---+$", "", text, flags=re.MULTILINE)
