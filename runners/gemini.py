@@ -250,5 +250,16 @@ class GeminiRunner(RunnerBase):
             return "\u274c Gemini exited with an error."
 
         if assistant_text_parts:
-            return "".join(assistant_text_parts)
+            final_text = "".join(assistant_text_parts)
+            # Filter out [Thought: true] blocks leaked from gemini-cli internal reasoning
+            if "[Thought: true]" in final_text:
+                final_text = final_text.split("[Thought: true]")[-1]
+            
+            # Filter out any initial bold action blocks that might also be leaked thoughts
+            import re
+            final_text = re.sub(r'^\*\*.*?\*\*\s*I[\'’]m.*?(?=\n\n|$)', '', final_text, flags=re.DOTALL|re.IGNORECASE)
+            
+            final_text = final_text.strip()
+            if final_text:
+                return final_text
         return "(empty response from Gemini)"
