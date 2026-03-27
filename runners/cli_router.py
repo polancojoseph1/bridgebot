@@ -83,6 +83,10 @@ def _create_runner_by_name(name: str) -> "RunnerBase | None":
             from runners.qwen import QwenRunner
             r = QwenRunner()
             return r if r.is_available() else None
+        elif name == "freecode":
+            from runners.free import FreeCodeRunner
+            r = FreeCodeRunner()
+            return r if r.is_available() else None
     except Exception as e:
         logger.warning("[cli-router] Failed to create %s runner: %s", name, e)
     return None

@@ -98,7 +98,8 @@ class ClaudeRunner(RunnerBase):
         session_started = instance.session_started
 
         _CLI_RUNNER_NAMES = {"claude", "gemini", "codex", "qwen", "free", "freecode"}
-        model = instance.model if instance.model and instance.model not in _CLI_RUNNER_NAMES else "claude-sonnet-4-6"
+        _raw_model = instance.model or ""
+        model = _raw_model if (_raw_model and _raw_model not in _CLI_RUNNER_NAMES and _raw_model.startswith("claude-")) else "claude-sonnet-4-6"
         cmd = [binary, "-p", "--model", model,
                "--dangerously-skip-permissions",
                "--verbose", "--output-format", "stream-json"]

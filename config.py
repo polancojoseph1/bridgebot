@@ -9,7 +9,7 @@ import shutil
 import logging
 from dotenv import load_dotenv
 
-load_dotenv(os.environ.get("ENV_FILE", ".env"))
+load_dotenv(os.environ.get("ENV_FILE", ".env"), override=True)
 
 logger = logging.getLogger("bridge")
 
