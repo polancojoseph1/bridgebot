@@ -1864,19 +1864,27 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
 
     image_paths: list[str] = []
     try:
-        # For WhatsApp transport, file_id is already a local path downloaded by the bridge
-        if os.path.exists(file_id):
-            image_paths.append(file_id)
-        else:
-            image_paths.append(await download_photo(file_id))
-        for extra_id in (extra_file_ids or []):
-            try:
-                if os.path.exists(extra_id):
-                    image_paths.append(extra_id)
+        # Concurrently download all photos, preserving their original order
+        all_file_ids = [file_id] + (extra_file_ids or [])
+
+        async def _get_photo(fid: str) -> str:
+            if os.path.exists(fid):
+                return fid
+            return await download_photo(fid)
+
+        coroutines = [_get_photo(fid) for fid in all_file_ids]
+        results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+        for fid, result in zip(all_file_ids, results):
+            if isinstance(result, Exception):
+                # The primary file_id is required; extra photos can fail silently
+                if fid == file_id:
+                    raise result
                 else:
-                    image_paths.append(await download_photo(extra_id))
-            except Exception as ex:
-                logger.warning("Extra photo download failed (%s): %s", extra_id, ex)
+                    logger.warning("Extra photo download failed (%s): %s", fid, result)
+            else:
+                image_paths.append(result)
+
     except Exception as e:
         logger.error("Photo download failed: %s", e)
         await send_message(chat_id, _label(inst, f"\u274c Failed to download photo: {e}", proc_owner_id), format_markdown=True)
@@ -2279,7 +2287,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             new_model = None
             # Antigravity runner: Antigravity-specific model shortcuts
             if CLI_RUNNER == "antigravity":
-                from runners.antigravity import AntigravityRunner, _AG_MODELS
+                from runners.antigravity import _AG_MODELS
                 m_lower = m.lower().strip()
                 new_model = _AG_MODELS.get(m_lower)
                 if not new_model and "/" in m:
