@@ -588,12 +588,22 @@ async def v1_upload(
     original_name = file.filename or "upload"
     ext = os.path.splitext(original_name)[1] or ".bin"
 
-    content = await file.read()
+    MAX_SIZE = 100 * 1024 * 1024  # 100MB limit
+    total_size = 0
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix="bc_upload_") as tmp:
-        tmp.write(content)
+        while True:
+            chunk = await file.read(1024 * 1024)  # 1MB chunks
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > MAX_SIZE:
+                tmp.close()
+                os.unlink(tmp.name)
+                raise HTTPException(status_code=413, detail="File too large")
+            tmp.write(chunk)
         tmp_path = tmp.name
 
-    return {"path": tmp_path, "filename": original_name, "size": len(content)}
+    return {"path": tmp_path, "filename": original_name, "size": total_size}
 
 
 # ── /api/chat — static-export proxy ──────────────────────────────────────────
