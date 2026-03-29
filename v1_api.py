@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import random
+import logging
 import re
 import secrets as _secrets
 import tempfile
@@ -14,6 +15,8 @@ import uuid
 from typing import Optional, AsyncGenerator
 
 import httpx
+
+logger = logging.getLogger("bridge.v1_api")
 
 # ── Model routing pools ───────────────────────────────────────────────────────
 # Benchmarks sourced from model-arena (SWE-bench + Chatbot Arena, March 2026)
@@ -422,7 +425,8 @@ async def v1_chat(
                         )
                         await progress_q.put({"type": "result", "text": text})
                     except Exception as exc:
-                        await progress_q.put({"type": "fc_error", "text": str(exc)})
+                        logger.error("Freecode runner failed: %s", exc, exc_info=True)
+                        await progress_q.put({"type": "fc_error", "text": "Internal Server Error"})
 
                 asyncio.create_task(_run_fc())
 
@@ -451,7 +455,8 @@ async def v1_chat(
                 try:
                     result_text = await _server.runner.run(message, instance)
                 except Exception as exc:
-                    error_msg = str(exc)
+                    logger.error("Runner execution failed: %s", exc, exc_info=True)
+                    error_msg = "Internal Server Error"
 
             if error_msg:
                 err = {
@@ -484,11 +489,12 @@ async def v1_chat(
             yield json.dumps(done) + "\n"
 
         except Exception as exc:
+            logger.error("Internal streaming error in v1_chat: %s", exc, exc_info=True)
             err = {
                 "type": "error",
                 "conversation_id": body.conversation_id,
                 "code": "internal_error",
-                "message": str(exc),
+                "message": "Internal Server Error",
             }
             yield json.dumps(err) + "\n"
 
@@ -679,8 +685,9 @@ async def api_chat_proxy(request: Request):
                     async for chunk in resp.aiter_bytes():
                         yield chunk
         except Exception as exc:
+            logger.error("Internal proxy error in _stream: %s", exc, exc_info=True)
             import json as _json
-            yield (_json.dumps({"type": "error", "message": str(exc)}) + "\n").encode()
+            yield (_json.dumps({"type": "error", "message": "Internal Server Error"}) + "\n").encode()
 
     return StreamingResponse(
         _stream(),
@@ -761,8 +768,9 @@ async def api_proxy(request: Request):
                     async for chunk in resp.aiter_bytes():
                         yield chunk
         except Exception as exc:
+            logger.error("Internal error in _proxy_stream: %s", exc, exc_info=True)
             import json as _json
-            yield (_json.dumps({"type": "error", "message": str(exc)}) + "\n").encode()
+            yield (_json.dumps({"type": "error", "message": "Internal Server Error"}) + "\n").encode()
 
     return StreamingResponse(
         _proxy_stream(),
@@ -813,4 +821,5 @@ async def api_proxy_verify(request: Request):
             else:
                 return _JSONResponse({"status": "offline"})
     except Exception as exc:
-        return _JSONResponse({"status": "offline", "error": str(exc)})
+        logger.error("Health check error in api_proxy_verify: %s", exc, exc_info=True)
+        return _JSONResponse({"status": "offline", "error": "Internal Server Error"})
