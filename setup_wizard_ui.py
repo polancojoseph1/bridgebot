@@ -363,7 +363,7 @@ async def wa_status():
             r = await c.get(f"{WA_RUNNER_URL}/wa/status")
             return JSONResponse(r.json())
     except Exception as e:
-        logger.error("WhatsApp status check failed: %s", e, exc_info=True)
+        print(f"WhatsApp status check failed: {e}")
         return JSONResponse({"bridge_reachable": False, "connected": False, "error": "Internal Server Error"})
 
 
@@ -454,7 +454,7 @@ async def restart_wa_bridge():
         subprocess.run(["launchctl", "load", plist], capture_output=True)
         return JSONResponse({"ok": True})
     except Exception as e:
-        logger.error("Restart failed: %s", e, exc_info=True)
+        print(f"Restart failed: {e}")
         return JSONResponse({"ok": False, "error": "Internal Server Error"})
 
 
