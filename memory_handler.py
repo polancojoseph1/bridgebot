@@ -373,8 +373,8 @@ async def get_stats(user_id: int = 0) -> dict:
     try:
         return await loop.run_in_executor(None, _get_stats_sync, user_id)
     except Exception as e:
-        logger.error("Memory stats failed: %s", e)
-        return {"enabled": True, "error": str(e)}
+        logger.error("Memory stats failed: %s", e, exc_info=True)
+        return {"enabled": True, "error": "Internal Server Error"}
 
 
 async def reindex(user_id: int = 0) -> int:

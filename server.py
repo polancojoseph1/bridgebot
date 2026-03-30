@@ -984,10 +984,10 @@ async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str
             content={"ok": False, "error": f"AI response timed out after {req.timeout_secs}s", "response": ""},
         )
     except Exception as exc:
-        logger.error("Direct query error: %s", exc)
+        logger.error("Direct query error: %s", exc, exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"ok": False, "error": str(exc), "response": ""},
+            content={"ok": False, "error": "Internal Server Error", "response": ""},
         )
 
 
@@ -1370,7 +1370,8 @@ async def wa_status_endpoint():
             data = r.json()
             return JSONResponse({"bridge_reachable": True, "connected": data.get("connected", False), "raw": data})
     except Exception as e:
-        return JSONResponse({"bridge_reachable": False, "connected": False, "error": str(e)})
+        logger.error("WhatsApp status check failed: %s", e, exc_info=True)
+        return JSONResponse({"bridge_reachable": False, "connected": False, "error": "Internal Server Error"})
 
 
 @app.post("/webhook/whatsapp")

@@ -163,7 +163,7 @@ def test_direct_query_general_error():
     assert response.status_code == 500
     assert response.json() == {
         "ok": False,
-        "error": "boom",
+        "error": "Internal Server Error",
         "response": ""
     }
 
