@@ -1175,10 +1175,10 @@ async def process_update(body: dict) -> None:
         if _raw_name:
             _raw_ext = os.path.splitext(_raw_name)[1]
             # Whitelist extension characters: alphanumeric only, max 10 chars
-            _ext = re.sub(r"[^a-zA-Z0-9]", "", _raw_ext)[:10]
+            _ext = _RE_EXT.sub("", _raw_ext)[:10]
         file_name = f"upload_{file_id[:8]}_{int(time.time())}" + (f".{_ext}" if _ext else "")
         # Sanitize display name: only safe characters, max 128 chars
-        display_name = re.sub(r"[^a-zA-Z0-9._\- ]", "_", _raw_name)[:128] if _raw_name else file_name
+        display_name = _RE_DISPLAY_NAME.sub("_", _raw_name)[:128] if _raw_name else file_name
         save_dir = os.path.join(MEMORY_DIR, "uploads")
         os.makedirs(save_dir, exist_ok=True)
         dest_path = os.path.join(save_dir, file_name)
@@ -1631,6 +1631,8 @@ _MEDIA_PATH_RE = re.compile(
     r'((?:[A-Za-z]:[/\\]|[/\\]{2}|/|~/)[^\s"\'`\)\]>]+\.(?:png|jpg|jpeg|gif|webp|bmp|tiff|mp4|mov|mkv|webm|avi))',
     re.IGNORECASE,
 )
+_RE_EXT = re.compile(r"[^a-zA-Z0-9]")
+_RE_DISPLAY_NAME = re.compile(r"[^a-zA-Z0-9._\- ]")
 
 
 _MEDIA_ALLOWED_DIRS = [

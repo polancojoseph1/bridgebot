@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import os
 import platform
+import re
 import shutil
 import subprocess
 from typing import AsyncGenerator, Callable, Awaitable, Any
@@ -26,6 +27,9 @@ _LOG_DIR = os.path.join(
     os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.bridgebot")),
     "subprocess_logs",
 )
+
+_RE_ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*[mGKHF]')
+_RE_ANSI_CONTROL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 
 
 class RunnerBase(ABC):
@@ -222,9 +226,8 @@ class RunnerBase(ABC):
         err = stderr_data.decode(errors="replace").strip()
         if err:
             if strip_ansi:
-                import re
-                err = re.sub(r'\x1b\[[0-9;]*[mGKHF]', '', err)
-                err = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', err)
+                err = _RE_ANSI_ESCAPE.sub('', err)
+                err = _RE_ANSI_CONTROL.sub('', err)
             if max_err_len > 0:
                 err = err[:max_err_len]
             return f"{err_prefix}{err}"
