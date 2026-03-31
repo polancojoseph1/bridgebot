@@ -181,6 +181,7 @@ def _pick_model(tier: str, message: str) -> str:
 from typing import Literal  # noqa: E402
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile, File  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
+from server import _limiter  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 router = APIRouter(prefix="/v1", tags=["bridge-cloud"])
@@ -298,7 +299,9 @@ async def v1_health():
 # ── /v1/chat ─────────────────────────────────────────────────────────────────
 
 @router.post("/chat")
+@_limiter.limit("30/minute")
 async def v1_chat(
+    request: Request,
     body: ChatRequest,
     x_api_key: str = Header(default=""),
 ):
@@ -520,7 +523,9 @@ class ProvisionRequest(BaseModel):
 
 
 @router.post("/provision")
+@_limiter.limit("10/minute")
 async def v1_provision(
+    request: Request,
     body: ProvisionRequest,
     x_api_key: str = Header(default=""),
 ):
@@ -584,7 +589,9 @@ async def v1_provision(
 # ── /v1/upload ────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
+@_limiter.limit("20/minute")
 async def v1_upload(
+    request: Request,
     file: UploadFile = File(...),
     x_api_key: str = Header(default=""),
 ):
