@@ -45,11 +45,16 @@ CREATE TABLE IF NOT EXISTS denied_users (
 """
 
 
+_db_initialized = False
+
 def _conn() -> sqlite3.Connection:
+    global _db_initialized
     c = sqlite3.connect(_DB_PATH)
     c.row_factory = sqlite3.Row
-    c.executescript(_SCHEMA)
-    c.commit()
+    if not _db_initialized:
+        c.executescript(_SCHEMA)
+        c.commit()
+        _db_initialized = True
     return c
 
 

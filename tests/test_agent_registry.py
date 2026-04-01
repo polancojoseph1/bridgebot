@@ -24,10 +24,11 @@ def clean_registry(tmp_path):
     # Patch the db path to a temp db for isolation
     db_path = str(tmp_path / "test_agents.db")
     with patch("agent_registry.AGENTS_DB", db_path):
+        import agent_registry
+        agent_registry._db_initialized = False
         # The first time _get_conn is called in each test, it will connect
         # to this new temp db and run the _SCHEMA creation automatically.
         yield db_path
-
 
 # --- resolve_agent tests ---
 
