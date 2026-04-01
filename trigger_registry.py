@@ -67,11 +67,16 @@ class TriggerDefinition:
 # DB helpers
 # ---------------------------------------------------------------------------
 
+_db_initialized = False
+
 def _get_conn() -> sqlite3.Connection:
+    global _db_initialized
     conn = sqlite3.connect(AGENTS_DB)
     conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
-    conn.commit()
+    if not _db_initialized:
+        conn.executescript(_SCHEMA)
+        conn.commit()
+        _db_initialized = True
     return conn
 
 

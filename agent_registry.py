@@ -92,18 +92,23 @@ class SkillDefinition:
     updated_at: float = field(default_factory=time.time)
 
 
+_db_initialized = False
+
 def _get_conn() -> sqlite3.Connection:
+    global _db_initialized
     conn = sqlite3.connect(AGENTS_DB)
     conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
-    conn.commit()
-    # Run migrations for existing DBs (fail silently if columns already exist)
-    for migration in _MIGRATIONS:
-        try:
-            conn.execute(migration)
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+    if not _db_initialized:
+        conn.executescript(_SCHEMA)
+        conn.commit()
+        # Run migrations for existing DBs (fail silently if columns already exist)
+        for migration in _MIGRATIONS:
+            try:
+                conn.execute(migration)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        _db_initialized = True
     return conn
 
 
