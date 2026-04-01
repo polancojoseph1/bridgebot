@@ -348,7 +348,7 @@ async def v1_chat(
             # Free tier uses the local free proxy (OPENAI_BASE_URL=127.0.0.1:8592) which
             # rotates through Groq/Cerebras/Gemini/etc. — far more reliable than :free OR models.
             from config import BRIDGE_CLOUD_API_KEY as _bc_key
-            _x_as_or = x_api_key if (x_api_key and x_api_key != _bc_key) else ""
+            _x_as_or = x_api_key if (x_api_key and not _secrets.compare_digest(x_api_key, _bc_key or "")) else ""
             if effective_tier == "free" and not body.openrouter_key:
                 # Free tier: clear any stale OR key; FreeCode will use env proxy
                 instance.bc_openrouter_key = None
