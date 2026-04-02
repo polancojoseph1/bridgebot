@@ -217,34 +217,33 @@ def list_agents() -> list[AgentDefinition]:
 def update_agent(agent_id: str, **fields) -> AgentDefinition | None:
     """Update agent fields. Supported: name, agent_type, system_prompt, skills, model, collaborators, proactive, proactive_schedule, proactive_task, ephemeral.
     Returns updated agent or None if not found."""
-    agent = get_agent(agent_id)
-    if not agent:
-        return None
-
     allowed = {"name", "agent_type", "system_prompt", "skills", "model", "collaborators",
                "proactive", "proactive_schedule", "proactive_task", "ephemeral"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
-        return agent
+        return get_agent(agent_id)
 
-    agent.updated_at = time.time()
-    for k, v in updates.items():
-        setattr(agent, k, v)
+    updates["updated_at"] = time.time()
+
+    if "skills" in updates:
+        updates["skills"] = json.dumps(updates["skills"])
+    if "collaborators" in updates:
+        updates["collaborators"] = json.dumps(updates["collaborators"])
+    if "proactive" in updates:
+        updates["proactive"] = int(updates["proactive"])
+    if "ephemeral" in updates:
+        updates["ephemeral"] = int(updates["ephemeral"])
+
+    set_clauses = [f"{k} = ?" for k in updates.keys()]
+    values = list(updates.values())
+    values.append(agent_id)
+
+    query = f"UPDATE agents SET {', '.join(set_clauses)} WHERE id = ?"
 
     with _get_conn() as conn:
-        conn.execute(
-            """UPDATE agents SET
-               name = ?, agent_type = ?, system_prompt = ?, skills = ?, model = ?,
-               collaborators = ?, proactive = ?, proactive_schedule = ?, proactive_task = ?,
-               ephemeral = ?, updated_at = ?
-               WHERE id = ?""",
-            (
-                agent.name, agent.agent_type, agent.system_prompt, json.dumps(agent.skills),
-                agent.model, json.dumps(agent.collaborators), int(agent.proactive),
-                agent.proactive_schedule, agent.proactive_task, int(agent.ephemeral),
-                agent.updated_at, agent.id
-            )
-        )
+        cursor = conn.execute(query, tuple(values))
+        if cursor.rowcount == 0:
+            return None
 
     logger.info("Updated agent %s: %s", agent_id, list(updates.keys()))
     return get_agent(agent_id)
@@ -309,26 +308,23 @@ def list_skills_db() -> list[SkillDefinition]:
 def update_skill(skill_id: str, **fields) -> SkillDefinition | None:
     """Update skill fields. Supported: description, prompt.
     Returns updated skill or None if not found."""
-    skill = get_skill(skill_id)
-    if not skill:
-        return None
-
     allowed = {"description", "prompt"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
-        return skill
+        return get_skill(skill_id)
 
-    skill.updated_at = time.time()
-    for k, v in updates.items():
-        setattr(skill, k, v)
+    updates["updated_at"] = time.time()
+
+    set_clauses = [f"{k} = ?" for k in updates.keys()]
+    values = list(updates.values())
+    values.append(skill_id)
+
+    query = f"UPDATE skills SET {', '.join(set_clauses)} WHERE id = ?"
 
     with _get_conn() as conn:
-        conn.execute(
-            """UPDATE skills SET
-               description = ?, prompt = ?, updated_at = ?
-               WHERE id = ?""",
-            (skill.description, skill.prompt, skill.updated_at, skill.id)
-        )
+        cursor = conn.execute(query, tuple(values))
+        if cursor.rowcount == 0:
+            return None
 
     logger.info("Updated skill %s: %s", skill_id, list(updates.keys()))
     return get_skill(skill_id)
