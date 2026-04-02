@@ -1304,10 +1304,11 @@ async def _run_polling() -> None:
 @app.post("/webhook")
 @_limiter.limit("120/minute")
 async def webhook(request: Request):
+    import secrets
     from telegram_handler import _webhook_secret_token
     expected = _webhook_secret_token(TELEGRAM_BOT_TOKEN)
     incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if incoming != expected:
+    if not secrets.compare_digest(incoming, expected):
         logger.warning("Webhook rejected — invalid secret token")
         return JSONResponse(status_code=401, content={"ok": False})
     body = await request.json()
@@ -1378,12 +1379,13 @@ async def wa_status_endpoint():
 async def wa_webhook(request: Request):
     """Receive incoming WhatsApp messages from the Baileys Node.js bridge."""
     import os as _os
+    import secrets as _secrets
     from whatsapp_handler import register_jid, jid_to_int
 
     expected_secret = _os.environ.get("WA_BRIDGE_SECRET", "")
     if expected_secret:
         incoming = request.headers.get("X-WA-Bridge-Secret", "")
-        if incoming != expected_secret:
+        if not _secrets.compare_digest(incoming, expected_secret):
             logger.warning("[wa] Webhook rejected — invalid bridge secret")
             return JSONResponse(status_code=401, content={"ok": False})
 
