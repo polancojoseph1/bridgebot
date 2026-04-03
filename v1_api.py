@@ -12,11 +12,40 @@ import re
 import secrets as _secrets
 import tempfile
 import uuid
+import socket
+import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
 
 logger = logging.getLogger("bridge.v1_api")
+
+async def _is_safe_url(url_str: str) -> bool:
+    try:
+        from urllib.parse import urlparse as _urlparse
+        parsed = _urlparse(url_str)
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        import asyncio
+        loop = asyncio.get_running_loop()
+        try:
+            # Run gethostbyname in a thread pool to avoid blocking the event loop
+            ip = await loop.run_in_executor(None, socket.gethostbyname, hostname)
+        except socket.gaierror:
+            return False
+
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+            return False
+
+        return True
+    except Exception:
+        return False
 
 # ── Model routing pools ───────────────────────────────────────────────────────
 # Benchmarks sourced from model-arena (SWE-bench + Chatbot Arena, March 2026)
@@ -656,15 +685,9 @@ async def api_chat_proxy(request: Request):
     target_url = _API_AGENT_URLS.get(agent_id, _API_AGENT_URLS["claude"])
 
     # Validate URL to prevent SSRF
-    try:
-        from urllib.parse import urlparse as _urlparse
-        _p = _urlparse(target_url)
-        if _p.scheme not in ("http", "https"):
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"type": "error", "message": "Invalid URL protocol"}, status_code=400)
-    except Exception:
+    if not await _is_safe_url(target_url):
         from fastapi.responses import JSONResponse
-        return JSONResponse({"type": "error", "message": "Invalid server URL"}, status_code=400)
+        return JSONResponse({"type": "error", "message": "Invalid or unsafe server URL"}, status_code=400)
 
     # Read key at request time so env changes take effect without restart.
     # Falls back to BRIDGE_CLOUD_API_KEY (set in .env.claude) for self-hosted bots.
@@ -733,13 +756,8 @@ async def api_proxy(request: Request):
         return _JSONResponse({"error": "No server configured for this agent"}, status_code=503)
 
     # Validate URL to prevent SSRF
-    try:
-        from urllib.parse import urlparse as _urlparse
-        _p = _urlparse(target_url)
-        if _p.scheme not in ("http", "https"):
-            raise ValueError("Invalid protocol")
-    except Exception:
-        return _JSONResponse({"error": "Invalid server URL"}, status_code=400)
+    if not await _is_safe_url(target_url):
+        return _JSONResponse({"error": "Invalid or unsafe server URL"}, status_code=400)
 
     # Determine OpenRouter key and tier.
     # If server_key is an OR key, use it as per-user key (pro tier).
@@ -802,13 +820,8 @@ async def api_proxy_verify(request: Request):
         return _JSONResponse({"status": "offline", "error": "No URL provided"})
 
     # Validate URL to prevent SSRF
-    try:
-        from urllib.parse import urlparse as _urlparse
-        _p = _urlparse(url)
-        if _p.scheme not in ("http", "https"):
-            return _JSONResponse({"status": "offline", "error": "Invalid URL protocol"})
-    except Exception:
-        return _JSONResponse({"status": "offline", "error": "Invalid server URL"})
+    if not await _is_safe_url(url):
+        return _JSONResponse({"status": "offline", "error": "Invalid or unsafe server URL"})
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
