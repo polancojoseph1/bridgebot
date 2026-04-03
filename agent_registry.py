@@ -355,9 +355,15 @@ def delete_skill(skill_id: str) -> tuple[bool, str]:
 def seed_default_skills() -> int:
     """Seed built-in skill packs if they don't already exist. Returns count seeded."""
     from agent_skills import SKILL_PACKS
+
+    # ⚡ Bolt Optimization: Fetch all IDs once to avoid N+1 queries during seeding
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT id FROM skills").fetchall()
+        existing_ids = {row["id"] for row in rows}
+
     seeded = 0
     for skill_id, pack in SKILL_PACKS.items():
-        if get_skill(skill_id) is None:
+        if skill_id not in existing_ids:
             try:
                 create_skill(
                     skill_id=skill_id,
@@ -408,9 +414,14 @@ def seed_default_agents() -> int:
         },
     ]
 
+    # ⚡ Bolt Optimization: Fetch all IDs once to avoid N+1 queries during seeding
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT id FROM agents").fetchall()
+        existing_ids = {row["id"] for row in rows}
+
     seeded = 0
     for d in defaults:
-        if get_agent(d["agent_id"]) is None:
+        if d["agent_id"] not in existing_ids:
             try:
                 create_agent(
                     agent_id=d["agent_id"],
