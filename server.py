@@ -1522,6 +1522,13 @@ if _BC_BUILD.exists():
     async def serve_bridge_cloud_ui(full_path: str):
         """SPA catch-all: serve Bridge Cloud static files, fallback to SPA shell."""
         candidate = _BC_BUILD / full_path
+
+        try:
+            if os.path.commonpath([os.path.realpath(candidate), os.path.realpath(_BC_BUILD)]) != os.path.realpath(_BC_BUILD):
+                return JSONResponse({"detail": "Not Found"}, status_code=404)
+        except ValueError:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
         if candidate.is_file():
             if str(candidate).endswith(".html"):
                 return _html_response(str(candidate))
