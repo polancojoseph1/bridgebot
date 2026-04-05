@@ -1522,14 +1522,27 @@ if _BC_BUILD.exists():
     async def serve_bridge_cloud_ui(full_path: str):
         """SPA catch-all: serve Bridge Cloud static files, fallback to SPA shell."""
         candidate = _BC_BUILD / full_path
+
+        # Prevent path traversal
+        import os
+        base_dir_real = os.path.realpath(str(_BC_BUILD))
+        candidate_real = os.path.realpath(str(candidate))
+        if os.path.commonpath([candidate_real, base_dir_real]) != base_dir_real:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="Forbidden")
+
         if candidate.is_file():
             if str(candidate).endswith(".html"):
                 return _html_response(str(candidate))
             return FileResponse(str(candidate))
         # trailingSlash=true: /chat/ → out/chat/index.html
         index = _BC_BUILD / full_path / "index.html"
-        if index.is_file():
-            return _html_response(str(index))
+
+        index_real = os.path.realpath(str(index))
+        if os.path.commonpath([index_real, base_dir_real]) == base_dir_real:
+            if index.is_file():
+                return _html_response(str(index))
+
         # SPA fallback: for /chat/* serve the chat shell (not root — root redirects
         # back to /chat and creates an infinite reload loop for dynamic conv IDs).
         clean = full_path.strip("/")
