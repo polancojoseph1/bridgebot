@@ -154,28 +154,32 @@ _DEBOUNCE = 0.4              # seconds to group text+photo sent in quick success
 # Antigravity bridge helpers
 # ---------------------------------------------------------------------------
 _AG_DB = Path.home() / ".jefe" / "antigravity-bridge" / "tasks.db"
+_ag_db_initialized = False
 
 def _ag_queue_task(prompt: str, chat_id: int, bot_token: str) -> str:
     """Insert a task into the Antigravity queue DB. Returns task_id."""
+    global _ag_db_initialized
     _AG_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_AG_DB)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id TEXT PRIMARY KEY, prompt TEXT NOT NULL,
-            chat_id INTEGER NOT NULL, bot_token TEXT NOT NULL,
-            status TEXT DEFAULT 'pending', result TEXT,
-            created_at INTEGER DEFAULT (strftime('%s','now')),
-            updated_at INTEGER DEFAULT (strftime('%s','now'))
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS questions (
-            id TEXT PRIMARY KEY, question TEXT NOT NULL,
-            reply TEXT, status TEXT DEFAULT 'pending',
-            created_at INTEGER DEFAULT (strftime('%s','now')),
-            updated_at INTEGER DEFAULT (strftime('%s','now'))
-        )
-    """)
+    if not _ag_db_initialized:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY, prompt TEXT NOT NULL,
+                chat_id INTEGER NOT NULL, bot_token TEXT NOT NULL,
+                status TEXT DEFAULT 'pending', result TEXT,
+                created_at INTEGER DEFAULT (strftime('%s','now')),
+                updated_at INTEGER DEFAULT (strftime('%s','now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS questions (
+                id TEXT PRIMARY KEY, question TEXT NOT NULL,
+                reply TEXT, status TEXT DEFAULT 'pending',
+                created_at INTEGER DEFAULT (strftime('%s','now')),
+                updated_at INTEGER DEFAULT (strftime('%s','now'))
+            )
+        """)
+        _ag_db_initialized = True
     task_id = str(uuid.uuid4())
     conn.execute(
         "INSERT INTO tasks (id, prompt, chat_id, bot_token) VALUES (?,?,?,?)",
