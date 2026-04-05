@@ -12,7 +12,11 @@ import sys
 import shutil
 import subprocess
 import platform
+import re
 from pathlib import Path
+
+_RE_ANSI = re.compile(r'\x1b\[[0-9;]*m')
+_RE_CLOUDFLARE_URL = re.compile(r'https://[a-zA-Z0-9\-]+\.trycloudflare\.com')
 
 # ---------------------------------------------------------------------------
 # Auto-activate venv — re-exec with venv Python if we're not already in it
@@ -1401,7 +1405,6 @@ def _free_port(port: int) -> None:
 
 def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
     """Start a cloudflared quick tunnel, capture the URL, register the Telegram webhook."""
-    import re
     import time
     import threading
 
@@ -1426,8 +1429,8 @@ def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
         if time.time() > deadline:
             break
         # Strip ANSI escape codes before matching
-        clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
-        m = re.search(r'https://[a-zA-Z0-9\-]+\.trycloudflare\.com', clean)
+        clean = _RE_ANSI.sub('', line)
+        m = _RE_CLOUDFLARE_URL.search(clean)
         if m:
             url = m.group(0).strip()
             break
