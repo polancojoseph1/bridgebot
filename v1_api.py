@@ -671,8 +671,11 @@ _API_AGENT_KEYS: dict[str, str] = {
 
 api_router = APIRouter(prefix="/api", tags=["proxy"])
 
+from server import _limiter  # noqa: E402
+
 @api_router.post("/chat")
 @api_router.post("/chat/")
+@_limiter.limit("30/minute")
 async def api_chat_proxy(request: Request):
     """Proxy /api/chat → the correct bot's /v1/chat (replicates Next.js route.ts)."""
     try:
@@ -732,6 +735,7 @@ async def api_chat_proxy(request: Request):
 
 @api_router.post("/proxy")
 @api_router.post("/proxy/")
+@_limiter.limit("30/minute")
 async def api_proxy(request: Request):
     """Proxy /api/proxy → the correct bot's /v1/chat (Next.js route.ts replacement)."""
     from fastapi.responses import JSONResponse as _JSONResponse
@@ -805,6 +809,7 @@ async def api_proxy(request: Request):
 
 
 @api_router.post("/proxy/verify")
+@_limiter.limit("30/minute")
 async def api_proxy_verify(request: Request):
     """Verify a bot server is reachable — used by Bridge Cloud ConnectForm + health check."""
     from fastapi.responses import JSONResponse as _JSONResponse
