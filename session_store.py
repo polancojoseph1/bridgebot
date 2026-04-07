@@ -25,6 +25,8 @@ def _default_db_path() -> str:
 
 DEFAULT_DB_PATH = _default_db_path()
 
+_initialized_paths: set[str] = set()
+
 
 class SessionStore:
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
@@ -39,6 +41,14 @@ class SessionStore:
         return conn
 
     def _init_db(self) -> None:
+        # ⚡ Bolt Optimization: Avoid redundant disk I/O on every SessionStore instantiation
+        # by checking if this specific database file has already been initialized.
+        # This reduces schema queries from O(n) instantiations to O(1) per db path.
+        # We skip caching for ":memory:" paths since in-memory DBs require fresh initialization
+        # per connection (common in test suites).
+        if self.db_path in _initialized_paths and self.db_path != ":memory:":
+            return
+
         with self._conn() as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -81,6 +91,8 @@ class SessionStore:
                     conn.execute(col_sql)
                 except sqlite3.OperationalError:
                     pass  # column already exists
+
+        _initialized_paths.add(self.db_path)
 
     # -------------------------------------------------------------------------
     # Session management
