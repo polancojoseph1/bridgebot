@@ -194,12 +194,11 @@ def get_agent(agent_id: str) -> AgentDefinition | None:
 def get_agent_by_name(name: str) -> AgentDefinition | None:
     """Case-insensitive partial name match. Returns first match or None."""
     with _get_conn() as conn:
-        rows = conn.execute("SELECT * FROM agents ORDER BY created_at").fetchall()
-    name_lower = name.lower()
-    for row in rows:
-        if name_lower in row["name"].lower() or name_lower == row["id"].lower():
-            return _row_to_agent(row)
-    return None
+        row = conn.execute(
+            "SELECT * FROM agents WHERE lower(name) LIKE ? OR lower(id) = ? ORDER BY created_at LIMIT 1",
+            (f"%{name.lower()}%", name.lower())
+        ).fetchone()
+    return _row_to_agent(row) if row else None
 
 
 def resolve_agent(id_or_name: str) -> AgentDefinition | None:

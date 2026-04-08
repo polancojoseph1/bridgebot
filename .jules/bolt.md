@@ -9,3 +9,7 @@
 ## 2025-03-03 - [Optimize SQLite Database Initialization]
 **Learning:** `server.py` was unconditionally executing `CREATE TABLE IF NOT EXISTS` commands inside `_ag_queue_task` every time a new task was queued. This caused severe I/O bottlenecks and redundant disk operations.
 **Action:** Introduced a module-level `_ag_db_initialized` boolean flag so the database schema initialization (`executescript` / `CREATE TABLE` statements) only runs once per process lifecycle on the first execution.
+
+## 2025-03-03 - [Optimize agent_registry get_agent_by_name]
+**Learning:** `agent_registry.py`'s `get_agent_by_name` fetched all rows using `SELECT * FROM agents` and looped over them in Python to do partial name matching. For missing agents, this becomes an O(N) full table scan with significant memory overhead.
+**Action:** Replaced the Python-side O(N) loop with a direct SQLite query `SELECT * FROM agents WHERE lower(name) LIKE ? OR lower(id) = ? LIMIT 1`, reducing lookup time from O(N) in Python to an efficient DB-level O(1) matching filter.
