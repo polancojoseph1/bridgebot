@@ -25,11 +25,13 @@ def _default_db_path() -> str:
 
 DEFAULT_DB_PATH = _default_db_path()
 
+_initialized_paths = set()
 
 class SessionStore:
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
         self.db_path = db_path
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        if self.db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _conn(self) -> sqlite3.Connection:
@@ -39,6 +41,10 @@ class SessionStore:
         return conn
 
     def _init_db(self) -> None:
+        global _initialized_paths
+        if self.db_path != ":memory:" and self.db_path in _initialized_paths:
+            return
+
         with self._conn() as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -81,6 +87,9 @@ class SessionStore:
                     conn.execute(col_sql)
                 except sqlite3.OperationalError:
                     pass  # column already exists
+
+        if self.db_path != ":memory:":
+            _initialized_paths.add(self.db_path)
 
     # -------------------------------------------------------------------------
     # Session management
