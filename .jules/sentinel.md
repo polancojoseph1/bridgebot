@@ -27,3 +27,8 @@
 **Vulnerability:** The `serve_bridge_cloud_ui` catch-all route `/{full_path:path}` served arbitrary files using `FileResponse` because the `full_path` string was concatenated with a base directory (`_BC_BUILD / full_path`) without verifying that the resulting path stayed within the intended directory boundaries.
 **Learning:** FastAPI's catch-all `/{path:path}` parameter receives the raw requested URI (potentially URL-encoded) which can include `../` path traversal sequences. Using this input directly in `Path()` concatenation and `FileResponse` allows attackers to escape the intended directory and read sensitive server files.
 **Prevention:** Always sanitize and enforce directory boundaries on user-provided file paths. Use `os.path.commonpath([os.path.realpath(target), os.path.realpath(base)]) == os.path.realpath(base)` to ensure the resolved file path strictly resides within the intended directory.
+
+## 2026-04-10 - [Security Improvement] Add rate limiting to proxy endpoints
+**Vulnerability:** The API proxy endpoints (`/api/chat`, `/api/proxy`, `/api/proxy/verify`) in `v1_api.py` lacked rate limiting, making them susceptible to Denial of Service (DoS) attacks and abuse of external API connections.
+**Learning:** All endpoints that perform significant processing or external network requests should be protected by rate limiting. Even endpoints meant to proxy requests to other services need rate limits to prevent abuse.
+**Prevention:** Apply the `@_limiter.limit` decorator (e.g., `@_limiter.limit("30/minute")`) to all FastAPI endpoints, particularly those acting as proxies or making downstream requests.
