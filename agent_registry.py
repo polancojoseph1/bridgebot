@@ -193,13 +193,14 @@ def get_agent(agent_id: str) -> AgentDefinition | None:
 
 def get_agent_by_name(name: str) -> AgentDefinition | None:
     """Case-insensitive partial name match. Returns first match or None."""
-    with _get_conn() as conn:
-        rows = conn.execute("SELECT * FROM agents ORDER BY created_at").fetchall()
+    # ⚡ Bolt Optimization: Push filtering down to SQLite instead of O(N) fetchall() and Python iteration
     name_lower = name.lower()
-    for row in rows:
-        if name_lower in row["name"].lower() or name_lower == row["id"].lower():
-            return _row_to_agent(row)
-    return None
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM agents WHERE INSTR(LOWER(name), ?) > 0 OR LOWER(id) = ? ORDER BY created_at LIMIT 1",
+            (name_lower, name_lower)
+        ).fetchone()
+    return _row_to_agent(row) if row else None
 
 
 def resolve_agent(id_or_name: str) -> AgentDefinition | None:
