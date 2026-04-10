@@ -80,6 +80,14 @@ BOT_EMOJI: str = os.environ.get("BOT_EMOJI", "")
 HOST: str = os.environ.get("HOST", "0.0.0.0")
 PORT: int = int(os.environ.get("PORT", "8588"))
 WEBHOOK_URL: str = os.environ.get("WEBHOOK_URL", "")
+
+def _parse_cors_origins() -> list[str]:
+    raw = os.environ.get("CORS_ALLOW_ORIGINS", "")
+    if not raw:
+        return []
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+CORS_ALLOW_ORIGINS: list[str] = _parse_cors_origins()
 if WEBHOOK_URL and not WEBHOOK_URL.startswith("https://"):
     _collab_token_set = bool(os.environ.get("COLLAB_TOKEN", ""))
     if _collab_token_set:

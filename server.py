@@ -889,9 +889,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # -- CORS (Bridge Cloud proxy handles auth; BridgeBot is behind Tailscale) ----
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from config import CORS_ALLOW_ORIGINS  # noqa: E402
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
