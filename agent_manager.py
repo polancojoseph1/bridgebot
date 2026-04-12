@@ -38,6 +38,8 @@ logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
+_CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
+
 # Maps agent_id -> instance_id for currently-running agent instances
 _agent_instance_map: dict[str, int] = {}
 
@@ -529,7 +531,7 @@ async def _diagnose_mistake(agent_name: str, task_response_text: str, feedback: 
             return result
     except Exception as e:
         # Redact any credential-like strings (API keys, tokens) from exception messages
-        _safe_err = re.sub(r'[A-Za-z0-9_\-]{32,}', '[REDACTED]', str(e))
+        _safe_err = _CREDENTIAL_RE.sub('[REDACTED]', str(e))
         logger.warning("_diagnose_mistake failed: %s", _safe_err)
         return ""
 

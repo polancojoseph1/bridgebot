@@ -13,3 +13,7 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+
+## 2025-03-03 - [Optimize re.sub execution]
+**Learning:** Calling `re.sub(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
+**Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
