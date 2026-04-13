@@ -13,3 +13,6 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+## 2025-03-03 - [Optimize _webhook_secret_token]
+**Learning:** `_webhook_secret_token` uses SHA-256 to hash the `bot_token`. This runs on every incoming webhook request, redundantly calculating the same hash repeatedly.
+**Action:** Use `@functools.lru_cache(maxsize=128)` to cache the deterministic result, avoiding repeated CPU hashing cost.
