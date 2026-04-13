@@ -1,0 +1,10 @@
+--- telegram_handler.py
++++ telegram_handler.py
+@@ -375,6 +375,7 @@
+     return True
+
+
++# ⚡ Bolt Optimization: Cache the deterministic SHA-256 computation of the webhook secret token to improve endpoint throughput.
+ @functools.lru_cache(maxsize=128)
+ def _webhook_secret_token(bot_token: str) -> str:
+     """Derive a stable secret token from the bot token (SHA-256, first 32 hex chars).

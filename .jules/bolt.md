@@ -13,3 +13,7 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+
+## 2024-06-25 - [Optimize webhook secret token derivation]
+**Learning:** `_webhook_secret_token()` in `telegram_handler.py` performed a SHA-256 cryptographic hash on the `TELEGRAM_BOT_TOKEN` for every incoming webhook request. Since the bot token is static and the hash is deterministic, this caused redundant CPU overhead on highly active bots.
+**Action:** Applied the `@functools.lru_cache` decorator to deterministic hashing functions that are called frequently (like webhook token derivation) to cache the result and improve endpoint throughput.

@@ -376,7 +376,6 @@ async def register_bot_commands(commands: list[tuple[str, str]]) -> bool:
     return False
 
 
-# ⚡ Bolt Optimization: Cache the deterministic SHA-256 computation of the webhook secret token to improve endpoint throughput.
 @functools.lru_cache(maxsize=128)
 def _webhook_secret_token(bot_token: str) -> str:
     """Derive a stable secret token from the bot token (SHA-256, first 32 hex chars).
