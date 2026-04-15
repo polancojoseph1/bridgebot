@@ -32,3 +32,8 @@
 **Vulnerability:** The FastAPI application used `allow_origins=["*"]` in the `CORSMiddleware` configuration, allowing any domain to make cross-origin requests to the API.
 **Learning:** Using `["*"]` for CORS origins nullifies the security benefits of the Same-Origin Policy, allowing malicious websites to make unauthorized requests to the API on behalf of the user, potentially leading to data exfiltration or Cross-Site Request Forgery (CSRF).
 **Prevention:** Always parse and explicitly whitelist allowed origins using environment variables (e.g., `CORS_ALLOW_ORIGINS`) and default to an empty list `[]` to ensure cross-origin requests are blocked by default unless explicitly configured.
+
+## 2025-02-27 - Fix missing rate limiting on unauthenticated endpoints
+**Vulnerability:** Missing rate limiting on unauthenticated endpoints (`/health`, `/status`, `/prompts`, `/wa/qr`, etc.) in `server.py` and `v1_api.py`.
+**Learning:** Without explicit rate limiting via `slowapi` (`@_limiter.limit()`), these endpoints were vulnerable to abuse and DoS attacks by exposing the application to unthrottled requests.
+**Prevention:** Ensure all unauthenticated (and authenticated) endpoints are properly decorated with rate limiting (e.g., `@_limiter.limit("X/minute")`) and accept the `request: Request` parameter required for resolving client IP addresses.
