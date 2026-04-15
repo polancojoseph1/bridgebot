@@ -13,3 +13,6 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+## 2025-03-09 - Remove Test Scripts Before Commit
+**Learning:** Adding test scripts directly to the repo to verify a performance improvement causes the code review to fail as it litters the repository with test files, which represents technical debt and a flawed process.
+**Action:** Always delete scratchpad and temporary verification scripts from the file tree before considering the patch finalized or initiating pre-commit review.
