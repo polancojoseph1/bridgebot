@@ -13,3 +13,7 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+
+## 2024-04-16 - Cache deterministic functions to improve endpoint throughput
+**Learning:** Deterministic functions that are called frequently in endpoints, like `_webhook_secret_token` which performs a SHA-256 hash on a constant string (`TELEGRAM_BOT_TOKEN`), can become unnecessary CPU overhead.
+**Action:** Used `@functools.lru_cache(maxsize=1)` on `_webhook_secret_token` to cache its output. Next time, identify pure functions called repeatedly in high-traffic endpoints and apply caching to improve throughput.

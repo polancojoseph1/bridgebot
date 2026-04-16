@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import html
 import logging
 import os
@@ -375,6 +376,9 @@ async def register_bot_commands(commands: list[tuple[str, str]]) -> bool:
     return False
 
 
+# ⚡ Bolt Optimization: Cache the webhook secret token derived from the bot token
+# to avoid repeatedly hashing on every webhook request.
+@functools.lru_cache(maxsize=1)
 def _webhook_secret_token(bot_token: str) -> str:
     """Derive a stable secret token from the bot token (SHA-256, first 32 hex chars).
     Telegram requires: 1-256 chars, only a-z A-Z 0-9 _ -"""
