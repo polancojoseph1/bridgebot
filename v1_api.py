@@ -5,6 +5,8 @@ These are separate from the Telegram webhook chain.
 """
 import asyncio
 import json
+import contextlib
+import typing
 import os
 import random
 import logging
@@ -26,26 +28,92 @@ async def _is_safe_url(url_str: str) -> bool:
         parsed = _urlparse(url_str)
         if parsed.scheme not in ("http", "https"):
             return False
-
         hostname = parsed.hostname
         if not hostname:
             return False
-
-        import asyncio
-        loop = asyncio.get_running_loop()
-        try:
-            # Run gethostbyname in a thread pool to avoid blocking the event loop
-            ip = await loop.run_in_executor(None, socket.gethostbyname, hostname)
-        except socket.gaierror:
-            return False
-
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            return False
-
         return True
     except Exception:
         return False
+
+
+
+class _SafeAnyIOBackend:
+    def __init__(self, original_backend, block_private_ips: bool = True):
+        self._original = original_backend
+        self.block_private_ips = block_private_ips
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: typing.Optional[float] = None,
+        local_address: typing.Optional[str] = None,
+        **kwargs,
+    ):
+        import asyncio
+        import httpcore
+
+
+        loop = asyncio.get_running_loop()
+        try:
+            # use getaddrinfo to support both IPv4 and IPv6
+            # socket.AF_UNSPEC returns both
+            # 0 (SOCK_STREAM) for TCP
+            addr_info = await loop.run_in_executor(
+                None, socket.getaddrinfo, host, port, socket.AF_UNSPEC, socket.SOCK_STREAM
+            )
+            # Pick the first valid IP
+            if not addr_info:
+                raise httpcore.ConnectError("DNS resolution failed")
+            ip = addr_info[0][4][0]
+        except socket.gaierror:
+            raise httpcore.ConnectError("DNS resolution failed")
+
+        if self.block_private_ips:
+
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                raise httpcore.ConnectError(f"Blocked SSRF attempt: {ip}")
+
+        return await self._original.connect_tcp(
+            ip, port, timeout=timeout, local_address=local_address, **kwargs
+        )
+
+    async def connect_tls(self, *args, **kwargs):
+        return await self._original.connect_tls(*args, **kwargs)
+
+    async def connect_unix_socket(self, *args, **kwargs):
+        return await self._original.connect_unix_socket(*args, **kwargs)
+
+
+@contextlib.asynccontextmanager
+async def _get_safe_client(timeout: typing.Optional[float] = None, block_private_ips: bool = True) -> typing.AsyncGenerator[httpx.AsyncClient, None]:
+    import httpx
+    import httpcore
+    from httpcore.backends.asyncio import AsyncIOBackend
+
+    class SafeTransport(httpx.AsyncHTTPTransport):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # Recreate the pool with our custom backend, preserving other settings
+            # from the initialized _pool
+            pool_kwargs = {
+                "ssl_context": self._pool._ssl_context,
+                "max_connections": self._pool._max_connections,
+                "max_keepalive_connections": self._pool._max_keepalive_connections,
+                "keepalive_expiry": self._pool._keepalive_expiry,
+                "http1": self._pool._http1,
+                "http2": self._pool._http2,
+                "retries": self._pool._retries,
+                "local_address": self._pool._local_address,
+                "uds": self._pool._uds,
+                "network_backend": _SafeAnyIOBackend(AsyncIOBackend(), block_private_ips=block_private_ips),
+            }
+            self._pool = httpcore.AsyncConnectionPool(**pool_kwargs)
+
+    transport = SafeTransport()
+    async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
+        yield client
 
 # ── Model routing pools ───────────────────────────────────────────────────────
 # Benchmarks sourced from model-arena (SWE-bench + Chatbot Arena, March 2026)
@@ -584,7 +652,7 @@ async def v1_provision(
     credit_limit = body.credit_limit_usd if body.credit_limit_usd is not None else PLAN_CREDIT_LIMITS[body.plan]
     key_name = body.label or f"bridge-cloud-{body.plan}-{body.user_id[:16]}-{uuid.uuid4().hex[:6]}"
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with _get_safe_client(timeout=15.0) as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/keys",
             headers={
@@ -706,7 +774,7 @@ async def api_chat_proxy(request: Request):
 
     async def _stream():
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            async with _get_safe_client(timeout=None, block_private_ips=False) as client:
                 async with client.stream(
                     "POST",
                     f"{target_url}/v1/chat",
@@ -779,9 +847,11 @@ async def api_proxy(request: Request):
     if or_key:
         chat_body["openrouter_key"] = or_key
 
+    block_private = target_url not in _API_AGENT_URLS.values()
+
     async def _proxy_stream():
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            async with _get_safe_client(timeout=None, block_private_ips=block_private) as client:
                 async with client.stream(
                     "POST",
                     f"{target_url}/v1/chat",
@@ -826,8 +896,10 @@ async def api_proxy_verify(request: Request):
     if not await _is_safe_url(url):
         return _JSONResponse({"status": "offline", "error": "Invalid or unsafe server URL"})
 
+    block_private = url not in _API_AGENT_URLS.values()
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with _get_safe_client(timeout=10.0, block_private_ips=block_private) as client:
             resp = await client.get(
                 f"{url}/v1/health",
                 headers={"X-API-Key": api_key} if api_key else {},
