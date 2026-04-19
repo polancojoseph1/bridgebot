@@ -13,3 +13,7 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+
+## 2025-03-03 - [Optimize O(N*M) performance bottlenecks in display loops]
+**Learning:** Iterating over entities while calling a lookup function that might perform an O(M) fallback scan results in O(N*M) complexity. For example, `get_running_instance` inside `format_agent_list`'s loop across all agents would run a fallback scan if cache was missing, causing exponential slowdown.
+**Action:** Pre-calculate a lookup mapping using a single batch scan of the secondary collection prior to the main entity loop.
