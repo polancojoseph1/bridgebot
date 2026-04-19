@@ -32,3 +32,7 @@
 **Vulnerability:** The FastAPI application used `allow_origins=["*"]` in the `CORSMiddleware` configuration, allowing any domain to make cross-origin requests to the API.
 **Learning:** Using `["*"]` for CORS origins nullifies the security benefits of the Same-Origin Policy, allowing malicious websites to make unauthorized requests to the API on behalf of the user, potentially leading to data exfiltration or Cross-Site Request Forgery (CSRF).
 **Prevention:** Always parse and explicitly whitelist allowed origins using environment variables (e.g., `CORS_ALLOW_ORIGINS`) and default to an empty list `[]` to ensure cross-origin requests are blocked by default unless explicitly configured.
+## 2024-05-28 - Missing Rate Limiting on Utility/Health Endpoints
+**Vulnerability:** Several unauthenticated utility endpoints (like `/health`, `/status`, `/wa/qr`) across the application lacked rate limiting.
+**Learning:** Exposing utility and health check endpoints without rate limits provides attackers with an easy avenue to flood the server, leading to resource exhaustion (DoS). Even if the endpoint is lightweight, thousands of requests per second can overwhelm the connection pool or application framework.
+**Prevention:** Always apply an appropriate rate limit (e.g., `@_limiter.limit("60/minute")`) to unauthenticated endpoints, ensuring that the necessary `request: Request` argument is included in the endpoint signature.

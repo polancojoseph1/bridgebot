@@ -300,7 +300,8 @@ class ChatRequest(BaseModel):
 # ── /v1/health ───────────────────────────────────────────────────────────────
 
 @router.get("/health")
-async def v1_health():
+@_limiter.limit("60/minute")
+async def v1_health(request: Request):
     """Public health check — no auth required so users can test connection."""
     import health as _health
     from config import CLI_RUNNER, BOT_NAME, is_cli_available
