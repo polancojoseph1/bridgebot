@@ -17,12 +17,9 @@ import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
+import httpcore
 
 logger = logging.getLogger("bridge.v1_api")
-
-import socket
-import ipaddress
-import httpcore
 
 class SafeAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
     def __init__(self, backend: httpcore.AsyncNetworkBackend):
