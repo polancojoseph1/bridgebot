@@ -32,3 +32,8 @@
 **Vulnerability:** The FastAPI application used `allow_origins=["*"]` in the `CORSMiddleware` configuration, allowing any domain to make cross-origin requests to the API.
 **Learning:** Using `["*"]` for CORS origins nullifies the security benefits of the Same-Origin Policy, allowing malicious websites to make unauthorized requests to the API on behalf of the user, potentially leading to data exfiltration or Cross-Site Request Forgery (CSRF).
 **Prevention:** Always parse and explicitly whitelist allowed origins using environment variables (e.g., `CORS_ALLOW_ORIGINS`) and default to an empty list `[]` to ensure cross-origin requests are blocked by default unless explicitly configured.
+
+## 2024-06-03 - SSRF DNS Rebinding Prevention via httpx Transport
+**Vulnerability:** Even when proxy endpoints validate external URLs strictly against private/internal IP ranges (using `socket.gethostbyname` during validation phase), `httpx` will resolve the domain *again* when making the actual connection. This allows an attacker to exploit a DNS Rebinding attack by changing the DNS response to an internal IP (like 127.0.0.1) immediately after the validation phase passes.
+**Learning:** Checking the domain resolution independently of the connection phase creates a Time-Of-Check to Time-Of-Use (TOCTOU) vulnerability.
+**Prevention:** To prevent DNS Rebinding SSRF vulnerabilities in `httpx` clients, enforce the IP check directly at the connection level. Inject a custom `httpcore.AsyncNetworkBackend` into `httpx.AsyncHTTPTransport` that intercepts `connect_tcp`, resolves and validates the IP natively, and passes the safe IP down to the underlying stream.
