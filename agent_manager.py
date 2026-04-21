@@ -326,9 +326,16 @@ def format_agent_list(instances: InstanceManager) -> str:
     if not agents:
         return "No agents. Create one with /agent create &lt;type&gt; &lt;name&gt;"
 
+    # Pre-calculate mapping to avoid O(N*M) lookups for idle agents
+    running_instances = {
+        getattr(inst, "agent_id"): inst
+        for inst in instances.list_all()
+        if getattr(inst, "agent_id", None) is not None
+    }
+
     lines = [f"<b>Agents ({len(agents)}):</b>"]
     for agent in agents:
-        running_inst = get_running_instance(agent.id, instances)
+        running_inst = running_instances.get(agent.id)
         if running_inst:
             status = "busy" if running_inst.processing else "active"
             inst_label = f"[#{running_inst.id}: {status}]"
