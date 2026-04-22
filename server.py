@@ -958,12 +958,14 @@ if _BRIDGENET_ENABLED:
 
 
 @app.get("/health")
-async def health_endpoint():
+@_limiter.limit("30/minute")
+async def health_endpoint(request: Request):
     return health.get_health()
 
 
 @app.get("/status")
-async def status_endpoint():
+@_limiter.limit("30/minute")
+async def status_endpoint(request: Request):
     return health.get_status()
 
 
@@ -1023,7 +1025,8 @@ async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str
 
 
 @app.get("/prompts")
-async def get_prompts(x_api_key: str = Header(default=""), name: Optional[str] = None):
+@_limiter.limit("30/minute")
+async def get_prompts(request: Request, x_api_key: str = Header(default=""), name: Optional[str] = None):
     """Return prompts — requires X-API-Key."""
     if not INTERNAL_API_KEY or not x_api_key or not secrets.compare_digest(x_api_key, INTERNAL_API_KEY):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -1322,7 +1325,8 @@ async def webhook(request: Request):
 
 
 @app.get("/wa/qr")
-async def wa_qr_endpoint():
+@_limiter.limit("30/minute")
+async def wa_qr_endpoint(request: Request):
     """Serve the current WhatsApp QR code as a PNG image for scanning in a browser."""
     from fastapi.responses import HTMLResponse
     wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
@@ -1341,7 +1345,8 @@ async def wa_qr_endpoint():
 
 
 @app.get("/wa/qr.png")
-async def wa_qr_png():
+@_limiter.limit("30/minute")
+async def wa_qr_png(request: Request):
     """Return the raw QR PNG file."""
     from fastapi.responses import FileResponse
     wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
@@ -1353,7 +1358,8 @@ async def wa_qr_png():
 
 
 @app.get("/wa/pairing-code")
-async def wa_pairing_code_endpoint():
+@_limiter.limit("30/minute")
+async def wa_pairing_code_endpoint(request: Request):
     """Return the current WhatsApp phone pairing code as plain text."""
     from fastapi.responses import PlainTextResponse
     wa_auth_dir = os.environ.get("WA_AUTH_DIR", os.path.expanduser("~/.jefe/wa-auth"))
@@ -1366,7 +1372,8 @@ async def wa_pairing_code_endpoint():
 
 
 @app.get("/wa/status")
-async def wa_status_endpoint():
+@_limiter.limit("30/minute")
+async def wa_status_endpoint(request: Request):
     """Check WhatsApp bridge connection status."""
     import httpx as _hx
     wa_bridge_url = os.environ.get("WA_BRIDGE_URL", "http://127.0.0.1:3001")
