@@ -28,10 +28,16 @@
 **Learning:** FastAPI's catch-all `/{path:path}` parameter receives the raw requested URI (potentially URL-encoded) which can include `../` path traversal sequences. Using this input directly in `Path()` concatenation and `FileResponse` allows attackers to escape the intended directory and read sensitive server files.
 **Prevention:** Always sanitize and enforce directory boundaries on user-provided file paths. Use `os.path.commonpath([os.path.realpath(target), os.path.realpath(base)]) == os.path.realpath(base)` to ensure the resolved file path strictly resides within the intended directory.
 
+## 2026-04-10 - [Security Improvement] Add rate limiting to proxy endpoints
+**Vulnerability:** The API proxy endpoints (`/api/chat`, `/api/proxy`, `/api/proxy/verify`) in `v1_api.py` lacked rate limiting, making them susceptible to Denial of Service (DoS) attacks and abuse of external API connections.
+**Learning:** All endpoints that perform significant processing or external network requests should be protected by rate limiting. Even endpoints meant to proxy requests to other services need rate limits to prevent abuse.
+**Prevention:** Apply the `@_limiter.limit` decorator (e.g., `@_limiter.limit("30/minute")`) to all FastAPI endpoints, particularly those acting as proxies or making downstream requests.
+
 ## 2024-05-28 - Overly Permissive CORS Configuration
 **Vulnerability:** The FastAPI application used `allow_origins=["*"]` in the `CORSMiddleware` configuration, allowing any domain to make cross-origin requests to the API.
 **Learning:** Using `["*"]` for CORS origins nullifies the security benefits of the Same-Origin Policy, allowing malicious websites to make unauthorized requests to the API on behalf of the user, potentially leading to data exfiltration or Cross-Site Request Forgery (CSRF).
 **Prevention:** Always parse and explicitly whitelist allowed origins using environment variables (e.g., `CORS_ALLOW_ORIGINS`) and default to an empty list `[]` to ensure cross-origin requests are blocked by default unless explicitly configured.
+
 ## 2026-04-14 - Missing Rate Limits on FastAPI Endpoints
 **Vulnerability:** Several utility and health-check endpoints in `server.py` (e.g., `/health`, `/status`, `/wa/qr`, `/wa/status`, `/prompts`) were missing rate-limiting decorators, potentially exposing the server to denial-of-service (DoS) or enumeration attacks through excessive, unauthenticated requests.
 **Learning:** The `slowapi` rate limiter decorator (`@_limiter.limit`) requires access to the client identifier, which it extracts from the `Request` object. Endpoints without a `request: Request` parameter in their function signature cannot be rate-limited using this standard middleware setup without causing a `TypeError` at runtime, leading to unprotected utility routes.
