@@ -8,7 +8,7 @@ Each skill has: id, description, prompt (injected into agent system prompts), is
 Usage:
     from agent_registry import (
         create_agent, get_agent, list_agents, update_agent, delete_agent,
-        create_skill, get_skill, list_skills_db, update_skill, delete_skill,
+        create_skill, get_skill, get_skills, list_skills_db, update_skill, delete_skill,
         seed_default_agents, seed_default_skills,
     )
 """
@@ -298,6 +298,16 @@ def get_skill(skill_id: str) -> SkillDefinition | None:
     with _get_conn() as conn:
         row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
     return _row_to_skill(row) if row else None
+
+
+def get_skills(skill_ids: list[str]) -> list[SkillDefinition]:
+    """Get multiple skills by ID. Returns only found skills."""
+    if not skill_ids:
+        return []
+    placeholders = ",".join("?" * len(skill_ids))
+    with _get_conn() as conn:
+        rows = conn.execute(f"SELECT * FROM skills WHERE id IN ({placeholders})", tuple(skill_ids)).fetchall()
+    return [_row_to_skill(row) for row in rows]
 
 
 def list_skills_db() -> list[SkillDefinition]:

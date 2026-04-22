@@ -13,3 +13,7 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+
+## 2025-03-03 - [Optimize agent_skills DB lookups by batching]
+**Learning:** `build_skills_prompt()` in `agent_skills.py` was calling `get_skill()` inside a loop over `skill_names`. This creates an N+1 query problem, doing N separate database fetches when retrieving multiple skills.
+**Action:** Introduced a batch retrieval function `get_skills` using an `IN` clause to fetch all requested skills in one query. Paired with a local dictionary mapping `id -> SkillDefinition` in `build_skills_prompt` to provide O(1) retrieval during string assembly.
