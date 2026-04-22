@@ -47,7 +47,12 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+_db_initialized = False
+
 def _init_db() -> None:
+    global _db_initialized
+    if _db_initialized:
+        return
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS schedules (
@@ -61,6 +66,7 @@ def _init_db() -> None:
             )
         """)
         conn.commit()
+        _db_initialized = True
 
 
 # ---------------------------------------------------------------------------
