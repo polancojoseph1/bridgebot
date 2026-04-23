@@ -300,6 +300,23 @@ def get_skill(skill_id: str) -> SkillDefinition | None:
     return _row_to_skill(row) if row else None
 
 
+def get_skills(skill_ids: list[str]) -> dict[str, SkillDefinition]:
+    """Get multiple skills by ID in a single query.
+    Returns a dictionary mapping skill ID to SkillDefinition.
+    """
+    if not skill_ids:
+        return {}
+    with _get_conn() as conn:
+        placeholders = ','.join('?' * len(skill_ids))
+        rows = conn.execute(f"SELECT * FROM skills WHERE id IN ({placeholders})", skill_ids).fetchall()
+
+    result = {}
+    for row in rows:
+        skill = _row_to_skill(row)
+        result[skill.id] = skill
+    return result
+
+
 def list_skills_db() -> list[SkillDefinition]:
     """Return all skills sorted by creation time."""
     with _get_conn() as conn:
