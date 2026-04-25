@@ -328,9 +328,17 @@ def format_agent_list(instances: InstanceManager) -> str:
     if not agents:
         return "No agents. Create one with /agent create &lt;type&gt; &lt;name&gt;"
 
+    # ⚡ Bolt Optimization: Pre-calculate active instances by agent_id in O(M)
+    # to avoid O(N*M) nested loops where N=agents and M=instances
+    active_by_agent = {}
+    for inst in instances.list_all():
+        aid = getattr(inst, "agent_id", None)
+        if aid:
+            active_by_agent[aid] = inst
+
     lines = [f"<b>Agents ({len(agents)}):</b>"]
     for agent in agents:
-        running_inst = get_running_instance(agent.id, instances)
+        running_inst = active_by_agent.get(agent.id)
         if running_inst:
             status = "busy" if running_inst.processing else "active"
             inst_label = f"[#{running_inst.id}: {status}]"
