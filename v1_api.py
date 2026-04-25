@@ -17,8 +17,65 @@ import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
+import httpcore
 
 logger = logging.getLogger("bridge.v1_api")
+
+
+class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self, backend: httpcore.AsyncNetworkBackend):
+        self._backend = backend
+
+    async def connect_tcp(
+        self, host: str, port: int, timeout: float = None, local_address=None, **kwargs
+    ) -> httpcore.AsyncNetworkStream:
+        import asyncio
+        import socket
+        import ipaddress
+
+        loop = asyncio.get_running_loop()
+        try:
+            addr_info = await loop.run_in_executor(
+                None, socket.getaddrinfo, host, port, socket.AF_UNSPEC, socket.SOCK_STREAM
+            )
+        except socket.gaierror as e:
+            raise httpcore.ConnectError(f"DNS resolution failed for {host}") from e
+
+        safe_ip = None
+        for family, type, proto, canonname, sockaddr in addr_info:
+            ip = sockaddr[0]
+            ip_obj = ipaddress.ip_address(ip)
+            if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
+                safe_ip = ip
+                break
+
+        if not safe_ip:
+            raise httpcore.ConnectError(f"Host {host} resolved to a blocked/private IP")
+
+        return await self._backend.connect_tcp(safe_ip, port, timeout=timeout, local_address=local_address, **kwargs)
+
+    async def connect_unix_socket(self, *args, **kwargs):
+        raise httpcore.ConnectError("Unix sockets are not allowed")
+
+    async def sleep(self, seconds: float):
+        await self._backend.sleep(seconds)
+
+class SafeAsyncHTTPTransport(httpx.AsyncHTTPTransport):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Wrap the original network backend to enforce IP validation
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=self._pool._ssl_context,
+            max_connections=self._pool._max_connections,
+            max_keepalive_connections=self._pool._max_keepalive_connections,
+            keepalive_expiry=self._pool._keepalive_expiry,
+            http1=self._pool._http1,
+            http2=self._pool._http2,
+            retries=self._pool._retries,
+            local_address=self._pool._local_address,
+            uds=self._pool._uds,
+            network_backend=SafeNetworkBackend(self._pool._network_backend),
+        )
 
 async def _is_safe_url(url_str: str) -> bool:
     try:
@@ -584,7 +641,7 @@ async def v1_provision(
     credit_limit = body.credit_limit_usd if body.credit_limit_usd is not None else PLAN_CREDIT_LIMITS[body.plan]
     key_name = body.label or f"bridge-cloud-{body.plan}-{body.user_id[:16]}-{uuid.uuid4().hex[:6]}"
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, transport=SafeAsyncHTTPTransport()) as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/keys",
             headers={
@@ -706,7 +763,7 @@ async def api_chat_proxy(request: Request):
 
     async def _stream():
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            async with httpx.AsyncClient(timeout=None, transport=SafeAsyncHTTPTransport()) as client:
                 async with client.stream(
                     "POST",
                     f"{target_url}/v1/chat",
@@ -781,7 +838,7 @@ async def api_proxy(request: Request):
 
     async def _proxy_stream():
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            async with httpx.AsyncClient(timeout=None, transport=SafeAsyncHTTPTransport()) as client:
                 async with client.stream(
                     "POST",
                     f"{target_url}/v1/chat",
@@ -827,7 +884,7 @@ async def api_proxy_verify(request: Request):
         return _JSONResponse({"status": "offline", "error": "Invalid or unsafe server URL"})
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, transport=SafeAsyncHTTPTransport()) as client:
             resp = await client.get(
                 f"{url}/v1/health",
                 headers={"X-API-Key": api_key} if api_key else {},
