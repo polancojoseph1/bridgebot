@@ -21,3 +21,7 @@
 ## 2025-04-14 - [Optimize _webhook_secret_token]
 **Learning:** Functions that hash a fixed secret token (like calculating SHA-256 on the Telegram bot token) shouldn't be recalculated repeatedly on every request. Since `_webhook_secret_token` is called on every incoming webhook in `server.py`, hashing on every request decreases throughput needlessly.
 **Action:** Used `@functools.lru_cache` decorator on deterministic hash-generating functions that take fixed configuration constants. This saves redundant compute cycles and improves API throughput.
+
+## 2026-04-27 - [Optimize build_skills_prompt N+1 queries]
+**Learning:** `build_skills_prompt` was calling `get_skill` inside a loop over `skill_names`, resulting in N+1 database queries to `skills` table for each requested skill.
+**Action:** Introduced a `get_skills` batch retrieval function utilizing an `IN` clause to fetch all relevant skills in a single SQL query, reducing repetitive database latency.

@@ -300,6 +300,18 @@ def get_skill(skill_id: str) -> SkillDefinition | None:
     return _row_to_skill(row) if row else None
 
 
+def get_skills(skill_ids: list[str]) -> dict[str, SkillDefinition]:
+    """Get multiple skills by ID. Returns a dictionary mapping ID to SkillDefinition."""
+    if not skill_ids:
+        return {}
+
+    # ⚡ Bolt Optimization: Batch retrieval using IN clause to resolve N+1 queries
+    placeholders = ",".join("?" * len(skill_ids))
+    with _get_conn() as conn:
+        rows = conn.execute(f"SELECT * FROM skills WHERE id IN ({placeholders})", tuple(skill_ids)).fetchall()
+    return {row["id"]: _row_to_skill(row) for row in rows}
+
+
 def list_skills_db() -> list[SkillDefinition]:
     """Return all skills sorted by creation time."""
     with _get_conn() as conn:
