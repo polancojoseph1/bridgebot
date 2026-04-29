@@ -21,3 +21,7 @@
 ## 2025-04-14 - [Optimize _webhook_secret_token]
 **Learning:** Functions that hash a fixed secret token (like calculating SHA-256 on the Telegram bot token) shouldn't be recalculated repeatedly on every request. Since `_webhook_secret_token` is called on every incoming webhook in `server.py`, hashing on every request decreases throughput needlessly.
 **Action:** Used `@functools.lru_cache` decorator on deterministic hash-generating functions that take fixed configuration constants. This saves redundant compute cycles and improves API throughput.
+
+## 2025-04-29 - [Optimize format_agent_list O(N*M) display loop to O(N+M)]
+**Learning:** In `agent_manager.py`, `format_agent_list` used `get_running_instance` inside a loop over all agents. This caused an O(N*M) performance bottleneck because `get_running_instance` loops through all instances if `_agent_instance_map` is incomplete.
+**Action:** Pre-calculate an `agent_id` to `Instance` mapping using a single batch scan of `instances.list_all()` prior to the main entity loop, reducing algorithmic complexity to O(N+M).
