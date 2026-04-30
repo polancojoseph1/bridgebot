@@ -42,3 +42,8 @@
 **Vulnerability:** Several utility and health-check endpoints in `server.py` (e.g., `/health`, `/status`, `/wa/qr`, `/wa/status`, `/prompts`) were missing rate-limiting decorators, potentially exposing the server to denial-of-service (DoS) or enumeration attacks through excessive, unauthenticated requests.
 **Learning:** The `slowapi` rate limiter decorator (`@_limiter.limit`) requires access to the client identifier, which it extracts from the `Request` object. Endpoints without a `request: Request` parameter in their function signature cannot be rate-limited using this standard middleware setup without causing a `TypeError` at runtime, leading to unprotected utility routes.
 **Prevention:** When adding new FastAPI endpoints, always ensure the `request: Request` parameter is included in the function signature if rate-limiting might be required, and proactively apply the `@_limiter.limit` decorator to all public-facing or unauthenticated routes.
+
+## 2024-05-28 - DNS Rebinding SSRF Vulnerability
+**Vulnerability:** The proxy endpoints in `v1_api.py` were using asynchronous pre-flight IP checks using `socket.gethostbyname` inside `_is_safe_url`. This is vulnerable to DNS rebinding attacks because the IP address could change between the check and the actual connection.
+**Learning:** Checking the IP asynchronously before the connection is established is unsafe against DNS rebinding. The check and the connection must be atomic, or the checked IP must be passed directly to the connection stream.
+**Prevention:** Enforce the checked IP at the connection level by injecting a custom `httpcore.AsyncNetworkBackend` that intercepts `connect_tcp` to perform the IP validation and securely connect to the validated IP.

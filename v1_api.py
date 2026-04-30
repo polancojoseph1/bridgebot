@@ -17,8 +17,58 @@ import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
+import httpcore
 
 logger = logging.getLogger("bridge.v1_api")
+
+
+class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self, backend: httpcore.AsyncNetworkBackend):
+        self.backend = backend
+
+    async def connect_tcp(
+        self, host: str, port: int, timeout: float = None, local_address: str = None, **kwargs
+    ) -> httpcore.AsyncNetworkStream:
+        loop = asyncio.get_running_loop()
+        try:
+            addr_info = await loop.run_in_executor(
+                None, socket.getaddrinfo, host, port, socket.AF_UNSPEC, socket.SOCK_STREAM
+            )
+        except socket.gaierror:
+            raise httpcore.ConnectError("DNS resolution failed or blocked")
+
+        safe_ip = None
+        for family, type, proto, canonname, sockaddr in addr_info:
+            ip = sockaddr[0]
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
+                    safe_ip = ip
+                    break
+            except ValueError:
+                continue
+
+        if not safe_ip:
+            raise httpcore.ConnectError(f"Connection to private or invalid IP blocked: {host}")
+
+        return await self.backend.connect_tcp(
+            safe_ip, port, timeout=timeout, local_address=local_address, **kwargs
+        )
+
+    async def connect_unix_socket(
+        self, server_hostname: str, uds_path: str, timeout: float = None, **kwargs
+    ) -> httpcore.AsyncNetworkStream:
+        raise httpcore.ConnectError("UNIX domain sockets are not allowed")
+
+    async def sleep(self, seconds: float) -> None:
+        await self.backend.sleep(seconds)
+
+
+def get_safe_client(**kwargs) -> httpx.AsyncClient:
+    transport = httpx.AsyncHTTPTransport()
+    transport._pool._network_backend = SafeNetworkBackend(transport._pool._network_backend)
+    return httpx.AsyncClient(transport=transport, **kwargs)
+
 
 async def _is_safe_url(url_str: str) -> bool:
     try:
@@ -584,7 +634,7 @@ async def v1_provision(
     credit_limit = body.credit_limit_usd if body.credit_limit_usd is not None else PLAN_CREDIT_LIMITS[body.plan]
     key_name = body.label or f"bridge-cloud-{body.plan}-{body.user_id[:16]}-{uuid.uuid4().hex[:6]}"
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with get_safe_client(timeout=15.0) as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/keys",
             headers={
@@ -706,7 +756,7 @@ async def api_chat_proxy(request: Request):
 
     async def _stream():
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            async with get_safe_client(timeout=None) as client:
                 async with client.stream(
                     "POST",
                     f"{target_url}/v1/chat",
@@ -781,7 +831,7 @@ async def api_proxy(request: Request):
 
     async def _proxy_stream():
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
+            async with get_safe_client(timeout=None) as client:
                 async with client.stream(
                     "POST",
                     f"{target_url}/v1/chat",
@@ -827,7 +877,7 @@ async def api_proxy_verify(request: Request):
         return _JSONResponse({"status": "offline", "error": "Invalid or unsafe server URL"})
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with get_safe_client(timeout=10.0) as client:
             resp = await client.get(
                 f"{url}/v1/health",
                 headers={"X-API-Key": api_key} if api_key else {},
