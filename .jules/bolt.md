@@ -25,3 +25,7 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
+
+## 2025-05-01 - [Optimize regex compilation in agent_manager.py]
+**Learning:** Calling `re.match`, `re.search`, or `re.split` with raw string patterns inside frequently-executed functions (like `spawn_agent` and `parse_pipeline_command`) forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
+**Action:** Pre-compiled regular expressions using `re.compile()` at the module level (e.g., `_MODEL_VALIDATION_RE`, `_PIPELINE_TASK_RE`, `_PIPELINE_SPLIT_RE`) to avoid repeated compilation and cache-lookup overhead during runtime execution.

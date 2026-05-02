@@ -39,6 +39,9 @@ from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
 _CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
+_MODEL_VALIDATION_RE = re.compile(r'^[\w.:/\-]+$')
+_PIPELINE_TASK_RE = re.compile(r'"([^"]+)"\s*$')
+_PIPELINE_SPLIT_RE = re.compile(r"\s*(?:→|->)\s*|\s+")
 
 # Maps agent_id -> instance_id for currently-running agent instances
 _agent_instance_map: dict[str, int] = {}
@@ -73,7 +76,7 @@ def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) ->
     inst.agent_system_prompt = _build_agent_system_prompt(agent)
     # Validate model string: only allow safe characters, max 128 chars
     model = agent.model or ""
-    if model and not re.match(r'^[\w.:/\-]+$', model) or len(model) > 128:
+    if model and not _MODEL_VALIDATION_RE.match(model) or len(model) > 128:
         logger.warning("spawn_agent: invalid model '%s' for agent '%s', using default", model, agent_id)
         model = ""
     inst.model = model
@@ -761,12 +764,12 @@ def parse_pipeline_command(args: str) -> tuple[list[str], str]:
       research → analytics → writer "task desc"
     """
     # Extract quoted task at end
-    task_match = re.search(r'"([^"]+)"\s*$', args)
+    task_match = _PIPELINE_TASK_RE.search(args)
     task = task_match.group(1) if task_match else ""
     agents_part = args[:task_match.start()].strip() if task_match else args
 
     # Split on → or ->
-    parts = re.split(r"\s*(?:→|->)\s*|\s+", agents_part)
+    parts = _PIPELINE_SPLIT_RE.split(agents_part)
     agent_ids = [p.strip().lower() for p in parts if p.strip()]
 
     return agent_ids, task
