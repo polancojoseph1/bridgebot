@@ -25,3 +25,7 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
+
+## 2025-06-25 - [Optimize repetitive regex compilation in hot paths]
+**Learning:** Functions that parse text frequently using raw regex strings inside loops or on every request (e.g., `_convert_markdown_tables` in `telegram_handler.py`, or `handle_message` in `server.py`) cause Python to repeatedly retrieve the compiled regex from its internal cache or re-compile it if evicted, introducing unnecessary overhead in hot paths.
+**Action:** Pre-compile these regular expressions using `re.compile()` at the module level (e.g., `_RE_TABLE_SEP = re.compile(r"^\s*\|[\s\-|:]+\|\s*$")`). Use the compiled pattern's methods (like `_RE_TABLE_SEP.match()`) to eliminate runtime compilation and cache-lookup overhead.

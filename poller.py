@@ -19,6 +19,9 @@ import sqlite3
 import subprocess
 import time
 import urllib.request
+import re
+
+_BRANCH_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9/_.-]*[a-zA-Z0-9]$")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 POLL_INTERVAL  = 5    # seconds between polls
@@ -87,8 +90,7 @@ def get_triggers() -> list[dict]:
 
 def get_remote_hash(repo_path: str, branch: str) -> str | None:
     """Fetch from remote and return the latest commit hash on that branch."""
-    import re as _re
-    if not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9/_.-]*[a-zA-Z0-9]$", branch):
+    if not _BRANCH_VALIDATION_RE.match(branch):
         log.warning("Skipping trigger — invalid branch name: %r", branch)
         return None
     try:
