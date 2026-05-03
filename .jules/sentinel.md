@@ -52,3 +52,7 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
+## 2026-05-03 - Webhook Rate Limiting Anti-Pattern
+**Vulnerability:** Adding standard IP-based rate limiting (`slowapi`) to webhook endpoints (e.g., WhatsApp bridge, GitHub webhooks) will cause a critical functional regression by dropping legitimate traffic.
+**Learning:** Webhooks receive aggregated traffic from a single external source. IP-based limiters will incorrectly track and throttle all incoming webhook events as a single client, quickly exceeding normal limits.
+**Prevention:** Secure webhook endpoints using authentication (like HMAC signature verification or shared secrets) instead of strict IP-based rate limits to ensure trusted traffic is never dropped.
