@@ -91,14 +91,16 @@ async def _is_safe_url(url_str: str) -> bool:
         import asyncio
         loop = asyncio.get_running_loop()
         try:
-            # Run gethostbyname in a thread pool to avoid blocking the event loop
-            ip = await loop.run_in_executor(None, socket.gethostbyname, hostname)
+            # Run getaddrinfo in a thread pool to avoid blocking the event loop and support IPv6
+            addr_info = await loop.run_in_executor(None, socket.getaddrinfo, hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         except socket.gaierror:
             return False
 
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            return False
+        for family, type, proto, canonname, sockaddr in addr_info:
+            ip = sockaddr[0]
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                return False
 
         return True
     except Exception:
