@@ -25,3 +25,6 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
+## 2026-05-01 - [Avoid redundant DNS resolution by relying on connection-layer SSRF checks]
+**Learning:** Pre-flight IP checks (e.g. `socket.gethostbyname`) to prevent SSRF are redundant and slow when connection-layer protections (like `SafeNetworkBackend`) already natively resolve and validate IPs. These pre-flight checks introduce latency and force unnecessary thread-pool dispatches (`loop.run_in_executor`).
+**Action:** Remove slow, redundant pre-flight DNS lookups from validation functions when the underlying HTTP client transport securely handles DNS rebinding protections natively.
