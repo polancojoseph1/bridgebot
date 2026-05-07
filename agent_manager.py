@@ -108,7 +108,7 @@ def get_running_instance(agent_id: str, instances: InstanceManager) -> Instance 
     # Fallback: scan all instances for a matching agent_id.
     # Handles cases where _agent_instance_map was cleared (e.g. server restart)
     # so a second trigger doesn't spawn a duplicate instance.
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         if getattr(inst, "agent_id", None) == agent_id:
             _agent_instance_map[agent_id] = inst.id  # re-register for fast lookups
             return inst
@@ -335,7 +335,7 @@ def format_agent_list(instances: InstanceManager) -> str:
         if inst is not None:
             active_instances[agent_id] = inst
 
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         aid = getattr(inst, "agent_id", None)
         if aid and aid not in active_instances:
             active_instances[aid] = inst
