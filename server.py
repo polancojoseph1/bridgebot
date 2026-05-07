@@ -406,12 +406,12 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
 def _is_any_processing() -> bool:
     """Check if any instance is currently processing."""
-    return any(inst.processing for inst in instances.list_all())
+    return any(inst.processing for inst in instances.iter_all())
 
 
 def _total_queue_size() -> int:
     """Total pending messages across all instance queues."""
-    return sum(inst.queue.qsize() for inst in instances.list_all() if inst.queue)
+    return sum(inst.queue.qsize() for inst in instances.iter_all() if inst.queue)
 
 
 
@@ -858,7 +858,7 @@ async def lifespan(application: FastAPI):
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
     # Stop all instance workers
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         if inst.worker_task and not inst.worker_task.done():
             inst.worker_task.cancel()
             try:
@@ -1234,7 +1234,7 @@ async def process_update(body: dict) -> None:
             target_inst = instances.get_by_display_num(int(target_ref), owner_id)
         if target_inst is None:
             # Partial title match (case-insensitive)
-            for inst in instances.list_all(for_owner_id=owner_id):
+            for inst in instances.iter_all(for_owner_id=owner_id):
                 if target_ref.lower() in inst.title.lower():
                     target_inst = inst
                     break
@@ -2185,7 +2185,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
     elif cmd == "/kill":
         # Nuclear option: kill everything across all instances
-        for inst in instances.list_all():
+        for inst in instances.iter_all():
             inst.clear_queue()
             if inst.current_task and not inst.current_task.done():
                 inst.current_task.cancel()
@@ -2574,7 +2574,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         elif sub == "back":
             # Switch back to the first non-agent instance (Default)
             default_inst = None
-            for inst in instances.list_all(for_owner_id=owner_id):
+            for inst in instances.iter_all(for_owner_id=owner_id):
                 if not inst.agent_id:
                     default_inst = inst
                     break
