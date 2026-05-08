@@ -406,12 +406,12 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
 def _is_any_processing() -> bool:
     """Check if any instance is currently processing."""
-    return any(inst.processing for inst in instances.list_all())
+    return any(inst.processing for inst in instances.iter_all())
 
 
 def _total_queue_size() -> int:
     """Total pending messages across all instance queues."""
-    return sum(inst.queue.qsize() for inst in instances.list_all() if inst.queue)
+    return sum(inst.queue.qsize() for inst in instances.iter_all() if inst.queue)
 
 
 
