@@ -1221,8 +1221,7 @@ async def process_update(body: dict) -> None:
     # One-shot direct message: @<id or name> <message>
     # Routes to a specific instance WITHOUT changing the active instance.
     # Supports: @2 hey, @Research what's the status?, @ChatGPT summarize this
-    import re as _re
-    _oneshot_match = _re.match(r'^@(\S+)\s+([\s\S]+)$', text.strip())
+    _oneshot_match = _RE_ONESHOT.match(text.strip())
     if _oneshot_match:
         target_ref = _oneshot_match.group(1)
         oneshot_text = _oneshot_match.group(2).strip()
@@ -1654,6 +1653,8 @@ _MEDIA_PATH_RE = re.compile(
 )
 _RE_EXT = re.compile(r"[^a-zA-Z0-9]")
 _RE_DISPLAY_NAME = re.compile(r"[^a-zA-Z0-9._\- ]")
+_RE_ONESHOT = re.compile(r'^@(\S+)\s+([\s\S]+)$')
+_RE_EVERY_SCHEDULE = re.compile(r"^(every\s+\S+)\s+(.+)$", re.IGNORECASE)
 
 
 _MEDIA_ALLOWED_DIRS = [
@@ -2673,7 +2674,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                                 # Schedule is first token (may be "every 2h" = 2 tokens)
                                 remainder = parts[2]
                                 # Try "every Xh/Xm" (2-word schedule) first
-                                every_match = re.match(r"^(every\s+\S+)\s+(.+)$", remainder, re.IGNORECASE)
+                                every_match = _RE_EVERY_SCHEDULE.match(remainder)
                                 if every_match:
                                     sched, task_desc = every_match.group(1), every_match.group(2)
                                 else:

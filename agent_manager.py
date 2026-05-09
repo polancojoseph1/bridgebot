@@ -39,6 +39,7 @@ from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
 _CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
+_RE_TASK_MATCH = re.compile(r'"([^"]+)"\s*$')
 
 # Maps agent_id -> instance_id for currently-running agent instances
 _agent_instance_map: dict[str, int] = {}
@@ -761,7 +762,7 @@ def parse_pipeline_command(args: str) -> tuple[list[str], str]:
       research → analytics → writer "task desc"
     """
     # Extract quoted task at end
-    task_match = re.search(r'"([^"]+)"\s*$', args)
+    task_match = _RE_TASK_MATCH.search(args)
     task = task_match.group(1) if task_match else ""
     agents_part = args[:task_match.start()].strip() if task_match else args
 
