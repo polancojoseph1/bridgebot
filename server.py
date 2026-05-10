@@ -1531,7 +1531,8 @@ if _BC_BUILD.exists():
         return FileResponse(path, headers=_NO_CACHE_HEADERS)
 
     @app.get("/{full_path:path}")
-    async def serve_bridge_cloud_ui(full_path: str):
+    @_limiter.limit("1200/minute")
+    async def serve_bridge_cloud_ui(full_path: str, request: Request):
         """SPA catch-all: serve Bridge Cloud static files, fallback to SPA shell."""
         candidate = _BC_BUILD / full_path
 
