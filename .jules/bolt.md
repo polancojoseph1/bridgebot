@@ -25,3 +25,7 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
+
+## 2025-05-10 - [Optimize instance iterations to O(M) without sorting]
+**Learning:** `InstanceManager.list_all()` performs an O(N log N) sorting step by instance ID. Calling `list_all()` just to check if queues are active (`any()`, `sum()`) or running shutdown procedures unnecessarily incurs sorting overhead, scaling poorly as concurrent instances increase.
+**Action:** Implemented `iter_all()` in `InstanceManager` which provides an unsorted iterator, dropping the overhead down to pure O(M). Replaced `list_all()` calls with `iter_all()` across all unordered check points like `_is_any_processing`, `_total_queue_size`, and `/kill` cleanups in `server.py`, as well as pre-calculations in `agent_manager.py`.
