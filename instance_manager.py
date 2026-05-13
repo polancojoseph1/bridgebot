@@ -317,8 +317,8 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
-    def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
-        """Return instances filtered by owner.
+    def iter_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
+        """Return an unsorted list snapshot of instances filtered by owner.
 
         for_owner_id=None  -> all instances (no filter)
         for_owner_id=0     -> only global instances
@@ -333,16 +333,20 @@ class InstanceManager:
 
         if for_owner_id is None:
             # All instances
-            instances = self._instances.values()
+            instances = list(self._instances.values())
         else:
             # Only instances for this owner
             owner_ids = self._owner_to_ids.get(for_owner_id, set())
-            instances = (self._instances[i] for i in owner_ids if i in self._instances)
+            instances = [self._instances[i] for i in owner_ids if i in self._instances]
 
         if excluded_inst_ids:
-            instances = (inst for inst in instances if inst.id not in excluded_inst_ids)
+            instances = [inst for inst in instances if inst.id not in excluded_inst_ids]
 
-        return sorted(instances, key=lambda i: i.id)
+        return instances
+
+    def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
+        """Return a sorted list of instances filtered by owner."""
+        return sorted(self.iter_all(for_owner_id=for_owner_id, exclude_user_ids=exclude_user_ids), key=lambda i: i.id)
 
     def format_list(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None, bot_name: str = "CLI") -> str:
         """Return a formatted HTML string of instances for display."""
