@@ -1533,7 +1533,7 @@ if _BC_BUILD.exists():
     @app.get("/{full_path:path}")
     async def serve_bridge_cloud_ui(full_path: str):
         """SPA catch-all: serve Bridge Cloud static files, fallback to SPA shell."""
-        candidate = _BC_BUILD / full_path
+        candidate = _BC_BUILD / full_path.lstrip('/')
 
         try:
             if os.path.commonpath([os.path.realpath(candidate), os.path.realpath(_BC_BUILD)]) != os.path.realpath(_BC_BUILD):
@@ -1546,7 +1546,7 @@ if _BC_BUILD.exists():
                 return _html_response(str(candidate))
             return FileResponse(str(candidate))
         # trailingSlash=true: /chat/ → out/chat/index.html
-        index = _BC_BUILD / full_path / "index.html"
+        index = _BC_BUILD / full_path.lstrip('/') / "index.html"
         if index.is_file():
             return _html_response(str(index))
         # SPA fallback: for /chat/* serve the chat shell (not root — root redirects
