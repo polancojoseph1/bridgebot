@@ -167,8 +167,7 @@ def test_switch_owner_isolation():
 
 # --- clear_queue tests ---
 
-@pytest.mark.asyncio
-async def test_clear_queue():
+def test_clear_queue():
     """Test that clear_queue successfully empties the queue and returns the correct count."""
     instance = Instance(id=1, title="Test Instance")
 
