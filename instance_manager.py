@@ -317,6 +317,27 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+    def iter_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
+        """Return an unsorted list snapshot of instances for faster iteration without O(N log N) sorting overhead."""
+        excluded_inst_ids: set[int] = set()
+        if exclude_user_ids:
+            for excl_id in exclude_user_ids:
+                if excl_id in self._owner_to_ids:
+                    excluded_inst_ids.update(self._owner_to_ids[excl_id])
+
+        if for_owner_id is None:
+            # All instances
+            instances = list(self._instances.values())
+        else:
+            # Only instances for this owner
+            owner_ids = self._owner_to_ids.get(for_owner_id, set())
+            instances = [self._instances[i] for i in owner_ids if i in self._instances]
+
+        if excluded_inst_ids:
+            instances = [inst for inst in instances if inst.id not in excluded_inst_ids]
+
+        return instances
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
