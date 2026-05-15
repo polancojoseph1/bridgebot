@@ -25,3 +25,7 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
+
+## 2025-05-15 - [Optimize checking properties across instances]
+**Learning:** Checking instance properties (e.g. `_is_any_processing()`, `_total_queue_size()`, or scanning for an active fallback `agent_id`) across all instances previously used `instances.list_all()`, which performs an O(N log N) sorting step (to order instances by ID). For large numbers of instances, repeating this sort during frequent asynchronous background checks or loops became an unnecessary bottleneck and occasionally triggered `RuntimeError: dictionary changed size during iteration` if iterating directly.
+**Action:** Implemented `iter_all()` in `instance_manager.py` to return an unsorted snapshot via `list(self._instances.values())`. Replaced `list_all()` with `iter_all()` in performance-critical areas that don't care about instance order, providing an O(N) iteration instead.
