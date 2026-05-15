@@ -317,6 +317,10 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+    def iter_all(self) -> list[Instance]:
+        """Return an unsorted snapshot of all instances."""
+        return list(self._instances.values())
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
