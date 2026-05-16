@@ -335,7 +335,7 @@ def format_agent_list(instances: InstanceManager) -> str:
         if inst is not None:
             active_instances[agent_id] = inst
 
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         aid = getattr(inst, "agent_id", None)
         if aid and aid not in active_instances:
             active_instances[aid] = inst
