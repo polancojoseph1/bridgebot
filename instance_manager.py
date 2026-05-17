@@ -302,6 +302,14 @@ class InstanceManager:
     # Listing
     # ------------------------------------------------------------------
 
+    def iter_all(self) -> list[Instance]:
+        """Return an unsorted list snapshot of all instances across all users.
+
+        This avoids the O(N log N) sorting overhead and complex filtering of list_all().
+        Useful when order doesn't matter (e.g. checking queues or stopping workers).
+        """
+        return list(self._instances.values())
+
     def display_num(self, instance_id: int, owner_id: int) -> int:
         """Return the 1-based display number of an instance within the owner's list."""
         owner_instances = self.list_all(for_owner_id=owner_id)

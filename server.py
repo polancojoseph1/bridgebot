@@ -406,12 +406,12 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
 def _is_any_processing() -> bool:
     """Check if any instance is currently processing."""
-    return any(inst.processing for inst in instances.list_all())
+    return any(inst.processing for inst in instances.iter_all())
 
 
 def _total_queue_size() -> int:
     """Total pending messages across all instance queues."""
-    return sum(inst.queue.qsize() for inst in instances.list_all() if inst.queue)
+    return sum(inst.queue.qsize() for inst in instances.iter_all() if inst.queue)
 
 
 
@@ -858,7 +858,7 @@ async def lifespan(application: FastAPI):
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
     # Stop all instance workers
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         if inst.worker_task and not inst.worker_task.done():
             inst.worker_task.cancel()
             try:
@@ -2185,11 +2185,11 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
     elif cmd == "/kill":
         # Nuclear option: kill everything across all instances
-        for inst in instances.list_all():
+        for inst in instances.iter_all():
             inst.clear_queue()
             if inst.current_task and not inst.current_task.done():
                 inst.current_task.cancel()
-        await runner.stop_all(instances.list_all())
+        await runner.stop_all(instances.iter_all())
         await runner.kill_all()
         await send_message(chat_id, "\U0001f480 Killed all Claude processes. All queues cleared.")
 
