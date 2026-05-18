@@ -317,6 +317,14 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+    def iter_all(self) -> list[Instance]:
+        """Return all instances without filtering or sorting (O(N)).
+
+        Useful for checking status across all instances (e.g. queue size)
+        without incurring the O(N log N) sorting overhead of list_all().
+        """
+        return list(self._instances.values())
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
