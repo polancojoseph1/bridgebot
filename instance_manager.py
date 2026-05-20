@@ -317,6 +317,17 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+    def iter_all(self) -> list[Instance]:
+        """Return an unsorted snapshot list of all instances.
+
+        This avoids the O(N log N) sorting overhead of list_all() when order
+        is not required (e.g. queue size checking, broad status queries).
+        Returns a list snapshot rather than a generator to prevent
+        'dictionary changed size during iteration' errors if callers `await`
+        tasks inside the iteration loop.
+        """
+        return list(self._instances.values())
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
