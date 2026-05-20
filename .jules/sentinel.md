@@ -52,3 +52,8 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
+
+## 2024-05-28 - Information Leakage via HTTPException (CWE-209)
+**Vulnerability:** The API endpoint `bridgenet_task` caught JSON parsing errors and returned `HTTPException(status_code=422, detail=f"Invalid JSON body: {e}")`.
+**Learning:** Returning stringified exception objects (`{e}`) in HTTP responses exposes internal stack details or parsing logic that can be leveraged by attackers.
+**Prevention:** Catch the exception, log it server-side using `logger.error("...", e, exc_info=True)`, and return a generic `detail="Invalid JSON body"` without the exception string.
