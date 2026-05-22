@@ -344,6 +344,36 @@ class InstanceManager:
 
         return sorted(instances, key=lambda i: i.id)
 
+    def iter_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
+        """Return an unsorted snapshot list of instances.
+
+        Use this instead of list_all() when order doesn't matter,
+        to avoid O(N log N) sorting overhead.
+
+        for_owner_id=None  -> all instances (no filter)
+        for_owner_id=0     -> only global instances
+        for_owner_id=N     -> only instances owned by user N
+        exclude_user_ids   -> additionally exclude instances owned by these user_ids
+        """
+        excluded_inst_ids: set[int] = set()
+        if exclude_user_ids:
+            for excl_id in exclude_user_ids:
+                if excl_id in self._owner_to_ids:
+                    excluded_inst_ids.update(self._owner_to_ids[excl_id])
+
+        if for_owner_id is None:
+            # All instances
+            instances = self._instances.values()
+        else:
+            # Only instances for this owner
+            owner_ids = self._owner_to_ids.get(for_owner_id, set())
+            instances = (self._instances[i] for i in owner_ids if i in self._instances)
+
+        if excluded_inst_ids:
+            return [inst for inst in instances if inst.id not in excluded_inst_ids]
+
+        return list(instances)
+
     def format_list(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None, bot_name: str = "CLI") -> str:
         """Return a formatted HTML string of instances for display."""
         visible = self.list_all(for_owner_id=for_owner_id, exclude_user_ids=exclude_user_ids)
