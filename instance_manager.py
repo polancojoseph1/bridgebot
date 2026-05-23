@@ -344,6 +344,15 @@ class InstanceManager:
 
         return sorted(instances, key=lambda i: i.id)
 
+    def iter_all(self, for_owner_id: int | None = None) -> list[Instance]:
+        """Return an unsorted snapshot of instances, optionally filtered by owner.
+        Use this instead of list_all() when sorting is not required to avoid O(N log N) overhead.
+        """
+        if for_owner_id is None:
+            return list(self._instances.values())
+        owner_ids = self._owner_to_ids.get(for_owner_id, set())
+        return [self._instances[i] for i in owner_ids if i in self._instances]
+
     def format_list(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None, bot_name: str = "CLI") -> str:
         """Return a formatted HTML string of instances for display."""
         visible = self.list_all(for_owner_id=for_owner_id, exclude_user_ids=exclude_user_ids)
