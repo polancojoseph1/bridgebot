@@ -25,7 +25,7 @@ def test_spawn_agent_returns_none_if_agent_not_found(monkeypatch):
 
     assert result is None
     # We expect 1 instance because InstanceManager creates a 'Default' instance on init
-    assert len(instances.list_all()) == 1
+    assert len(instances.iter_all()) == 1
 
 def test_spawn_agent_creates_instance_successfully(monkeypatch):
     mock_agent = AgentDefinition(
