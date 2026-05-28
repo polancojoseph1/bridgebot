@@ -317,6 +317,12 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+    def iter_all(self) -> list[Instance]:
+        """Fast path to iterate over all instances without sorting.
+        Returns a list snapshot to allow iteration without RuntimeError.
+        """
+        return list(self._instances.values())
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
