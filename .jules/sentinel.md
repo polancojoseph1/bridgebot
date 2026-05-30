@@ -52,3 +52,8 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
+
+## 2025-02-18 - Prevent exception leakage in user-facing errors
+**Vulnerability:** Information Exposure (CWE-209). Exception details (stack traces, internal variables, invalid inputs) were being returned directly to users through `HTTPException` details or direct `send_message` responses, allowing attackers to probe backend implementations.
+**Learning:** Returning exception details from `try...except` directly into generic errors exposes sensitive internal errors. In endpoints handling untrusted JSON data or in error recovery flow, generic error messages must be provided.
+**Prevention:** Catch exception and log the full details server-side using `logger.error("...", exc_info=True)` or passing the exception to logger, then display generic safe error messages to clients without formatting raw exceptions via `{e}`.
