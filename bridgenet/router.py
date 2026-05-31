@@ -528,7 +528,8 @@ async def bridgenet_task(
     try:
         body = await request.json()
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid JSON body: {e}")
+        logger.error("Invalid JSON body: %s", e, exc_info=True)
+        raise HTTPException(status_code=422, detail="Invalid JSON body")
 
     task_req = BridgeNetTaskRequest(**body)
 
