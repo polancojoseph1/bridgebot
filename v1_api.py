@@ -12,8 +12,6 @@ import re
 import secrets as _secrets
 import tempfile
 import uuid
-import socket
-import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
@@ -44,10 +42,13 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         safe_ip = None
         for family, type, proto, canonname, sockaddr in addr_info:
             ip = sockaddr[0]
-            ip_obj = ipaddress.ip_address(ip)
-            if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
-                safe_ip = ip
-                break
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
+                    safe_ip = ip
+                    break
+            except ValueError:
+                continue
 
         if not safe_ip:
             raise httpcore.ConnectError(f"Host {host} resolved to a blocked/private IP")
@@ -78,6 +79,8 @@ class SafeAsyncHTTPTransport(httpx.AsyncHTTPTransport):
         )
 
 async def _is_safe_url(url_str: str) -> bool:
+    """Validate that the URL scheme is strictly http/https.
+    ⚡ Bolt Optimization: Removed slow DNS pre-flight checks here since SafeNetworkBackend enforces them natively at the connection layer."""
     try:
         from urllib.parse import urlparse as _urlparse
         parsed = _urlparse(url_str)
@@ -88,18 +91,24 @@ async def _is_safe_url(url_str: str) -> bool:
         if not hostname:
             return False
 
-        import asyncio
-        loop = asyncio.get_running_loop()
-        try:
-            # Run gethostbyname in a thread pool to avoid blocking the event loop
-            ip = await loop.run_in_executor(None, socket.gethostbyname, hostname)
+>>>>>>> main
         except socket.gaierror:
             return False
 
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            return False
+        for family, type, proto, canonname, sockaddr in addr_info:
+            ip = sockaddr[0]
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                    return False
+            except ValueError:
+                continue
+>>>>>>> main
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+>>>>>>> main
+                return False
 
+>>>>>>> main
         return True
     except Exception:
         return False

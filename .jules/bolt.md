@@ -28,3 +28,4 @@
 ## 2025-05-18 - [Optimize InstanceManager.list_all O(N log N) overhead]
 **Learning:** Calling `instances.list_all()` returned a sorted list of all instances by ID (an O(N log N) operation), which was repeatedly called in non-display critical paths in `server.py` (e.g., `_is_any_processing`, `_total_queue_size`, and `/kill` commands) and `agent_manager.py`. This introduces unnecessary sorting overhead when merely iterating to check statuses or compute sums. Furthermore, returning a generator object over the underlying dictionary can cause "dictionary changed size during iteration" errors if callers `await` tasks inside the loop.
 **Action:** Introduced `instances.iter_all()` that returns an unsorted list snapshot (`list(self._instances.values())`), providing O(N) iteration that is safe for async loops and completely bypasses the O(N log N) sorting cost for internal programmatic use cases where display order is irrelevant.
+>>>>>>> main
