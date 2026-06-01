@@ -52,3 +52,8 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
+
+## 2026-05-28 - SSRF Prevention in Pre-flight IP Checks
+**Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
+**Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
+**Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
