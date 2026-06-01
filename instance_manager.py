@@ -344,6 +344,15 @@ class InstanceManager:
 
         return sorted(instances, key=lambda i: i.id)
 
+    def iter_all(self) -> list[Instance]:
+        """Return an unsorted list snapshot of all instances.
+
+        Use this instead of list_all() when simply checking properties across all
+        instances to avoid O(N log N) sorting overhead. Returns a list rather than a
+        generator to avoid dictionary changed size errors during async iteration.
+        """
+        return list(self._instances.values())
+
     def format_list(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None, bot_name: str = "CLI") -> str:
         """Return a formatted HTML string of instances for display."""
         visible = self.list_all(for_owner_id=for_owner_id, exclude_user_ids=exclude_user_ids)
