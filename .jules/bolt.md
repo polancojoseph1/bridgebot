@@ -13,6 +13,11 @@
 ## 2025-03-03 - [Optimize agent search by pushing filtering to SQLite]
 **Learning:** `get_agent_by_name()` in `agent_registry.py` used `fetchall()` to retrieve all agents from SQLite and iterated over them in Python to find a matching agent by partial name or exact ID. This results in an O(N) memory allocation and O(N) linear search time, creating a bottleneck as the agent list grows.
 **Action:** Push filtering down to SQLite using parameterized queries with `LOWER(name) LIKE ? OR LOWER(id) = ?` and `LIMIT 1` with `fetchone()` to perform the search efficiently within the database engine and drastically cut down memory usage and data transfer overhead.
+<<<<<<< HEAD
+## 2025-03-04 - [Optimize webhook token derivation]
+**Learning:** In `telegram_handler.py`, the `_webhook_secret_token` function performs a deterministic SHA-256 hash on `TELEGRAM_BOT_TOKEN` which was being evaluated on every incoming webhook request. This resulted in redundant work since the bot token is constant for the lifetime of the application.
+**Action:** Applied `@functools.lru_cache(maxsize=1)` to `_webhook_secret_token` to cache the derived token, avoiding repeated SHA-256 hashing during webhook handling, making the server more responsive.
+=======
 
 ## 2025-03-03 - [Optimize re.sub execution]
 **Learning:** Calling `re.sub(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
@@ -29,3 +34,4 @@
 ## 2025-06-25 - [Optimize repetitive regex compilation in hot paths]
 **Learning:** Functions that parse text frequently using raw regex strings inside loops or on every request (e.g., `_convert_markdown_tables` in `telegram_handler.py`, or `handle_message` in `server.py`) cause Python to repeatedly retrieve the compiled regex from its internal cache or re-compile it if evicted, introducing unnecessary overhead in hot paths.
 **Action:** Pre-compile these regular expressions using `re.compile()` at the module level (e.g., `_RE_TABLE_SEP = re.compile(r"^\s*\|[\s\-|:]+\|\s*$")`). Use the compiled pattern's methods (like `_RE_TABLE_SEP.match()`) to eliminate runtime compilation and cache-lookup overhead.
+>>>>>>> origin/main

@@ -1,5 +1,9 @@
 import asyncio
 import functools
+<<<<<<< HEAD
+import hashlib
+=======
+>>>>>>> main
 import html
 import logging
 import os
@@ -376,11 +380,17 @@ async def register_bot_commands(commands: list[tuple[str, str]]) -> bool:
     return False
 
 
+<<<<<<< HEAD
+@functools.lru_cache(maxsize=1)
+=======
 @functools.lru_cache(maxsize=1024)
+>>>>>>> main
 def _webhook_secret_token(bot_token: str) -> str:
     """Derive a stable secret token from the bot token (SHA-256, first 32 hex chars).
-    Telegram requires: 1-256 chars, only a-z A-Z 0-9 _ -"""
-    import hashlib
+    Telegram requires: 1-256 chars, only a-z A-Z 0-9 _ -
+
+    Performance: Cached to prevent repeated SHA-256 hashing on every incoming webhook request.
+    """
     return hashlib.sha256(bot_token.encode()).hexdigest()[:32]
 
 
