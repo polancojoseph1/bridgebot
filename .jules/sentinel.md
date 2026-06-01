@@ -53,7 +53,7 @@
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
 
-## 2024-05-02 - Missing Rate Limits on Bridgenet and Collab Endpoints
-**Vulnerability:** Several endpoints in `bridgenet/router.py` and `collab/router.py` (like `/profile`, `/peers`, `/task`, `/delegate`, `/broadcast`, `/feed`, etc.) were missing rate-limiting decorators, potentially exposing the server to DoS or enumeration attacks through unauthenticated or authenticated abuse.
-**Learning:** Endpoints mapped through auxiliary routers like `APIRouter` inside modular files must explicitly have the `@_limiter.limit` decorator applied just like the main application routes, and their signatures must include `request: Request` to satisfy the SlowAPI dependency.
-**Prevention:** Always verify that newly added auxiliary routers and their endpoints (e.g., in `/bridgenet` or `/collab`) explicitly import and apply the rate limiter, and correctly inject the `request` object into their signatures.
+## 2024-05-28 - SSRF IPv6 Evasion via gethostbyname
+**Vulnerability:** The `_is_safe_url` SSRF pre-flight check in `v1_api.py` used `socket.gethostbyname()`, which only resolves IPv4 addresses. An attacker could supply a domain that resolves to a safe IPv4 but a private IPv6 (e.g., `::1`). `_is_safe_url` would validate the IPv4 and allow the connection, but the underlying HTTP client could connect to the internal IPv6 address.
+**Learning:** Functions that only resolve IPv4 (like `gethostbyname`) are insufficient for SSRF checks when modern network backends (like `httpx`) resolve and connect to both IPv4 and IPv6.
+**Prevention:** Always use `socket.getaddrinfo(..., socket.AF_UNSPEC)` to fetch all IPv4 and IPv6 records for a hostname, and iterate over all resolved IPs, rejecting the URL if *any* of them fall into a private, loopback, or reserved range.

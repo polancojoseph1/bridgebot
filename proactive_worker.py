@@ -41,6 +41,8 @@ _chat_id: int = 0
 
 
 # ── Schedule parsing ───────────────────────────────────────────────────────────
+_RE_DAILY = re.compile(r"^\d{1,2}:\d{2}$")
+_RE_EVERY = re.compile(r"^every\s+(?:(\d+)h)?(?:(\d+)m)?$")
 
 _DAILY_RE = re.compile(r"^\d{1,2}:\d{2}$")
 _EVERY_RE = re.compile(r"^every\s+(?:(\d+)h)?(?:(\d+)m)?$")
@@ -57,14 +59,14 @@ def parse_schedule(s: str) -> tuple[str, object]:
     s = s.strip().lower()
 
     # HH:MM daily format
-    if _DAILY_RE.match(s):
+    if _RE_DAILY.match(s):
         h, m = s.split(":")
         if not (0 <= int(h) <= 23 and 0 <= int(m) <= 59):
             raise ValueError(f"Invalid time '{s}' — hours must be 0-23, minutes 0-59")
         return ("daily", f"{int(h):02d}:{int(m):02d}")
 
     # "every Xh", "every Xm", "every XhYm"
-    m_full = _EVERY_RE.match(s)
+    m_full = _RE_EVERY.match(s)
     if m_full:
         hours = int(m_full.group(1) or 0)
         mins = int(m_full.group(2) or 0)

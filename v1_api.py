@@ -44,11 +44,11 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
             ip = sockaddr[0]
             try:
                 ip_obj = ipaddress.ip_address(ip)
+                if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
+                    safe_ip = ip
+                    break
             except ValueError:
                 continue
-            if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
-                safe_ip = ip
-                break
 
         if not safe_ip:
             raise httpcore.ConnectError(f"Host {host} resolved to a blocked/private IP")
@@ -91,6 +91,7 @@ async def _is_safe_url(url_str: str) -> bool:
         if not hostname:
             return False
 
+>>>>>>> main
         except socket.gaierror:
             return False
 
@@ -98,9 +99,13 @@ async def _is_safe_url(url_str: str) -> bool:
             ip = sockaddr[0]
             try:
                 ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                    return False
             except ValueError:
                 continue
+>>>>>>> main
             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+>>>>>>> main
                 return False
 
 >>>>>>> main
