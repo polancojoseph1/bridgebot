@@ -16,3 +16,4 @@
 ## 2025-03-04 - [Optimize webhook token derivation]
 **Learning:** In `telegram_handler.py`, the `_webhook_secret_token` function performs a deterministic SHA-256 hash on `TELEGRAM_BOT_TOKEN` which was being evaluated on every incoming webhook request. This resulted in redundant work since the bot token is constant for the lifetime of the application.
 **Action:** Applied `@functools.lru_cache(maxsize=1)` to `_webhook_secret_token` to cache the derived token, avoiding repeated SHA-256 hashing during webhook handling, making the server more responsive.
+>>>>>>> main
