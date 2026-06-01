@@ -19,9 +19,9 @@ from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles as _StaticFiles
 from pydantic import BaseModel
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from rate_limiter import _limiter
 
 import health
 from config import (
@@ -883,7 +883,6 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="Telegram-Claude Bridge", lifespan=lifespan)
-_limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = _limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

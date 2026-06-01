@@ -39,6 +39,7 @@ from typing import Annotated
 from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from rate_limiter import _limiter
 
 from .auth import get_peer, get_relay_or_peer
 from .config import (
@@ -144,7 +145,8 @@ def _collab_require_owner(request: Request) -> None:
 
 
 @collab_router.get("/profile")
-async def collab_get_profile():
+@_limiter.limit("30/minute")
+async def collab_get_profile(request: Request):
     """Public profile endpoint — returns this instance's capabilities."""
     import config as main_config
 
@@ -167,6 +169,7 @@ async def collab_get_profile():
 
 
 @collab_router.get("/peers")
+@_limiter.limit("30/minute")
 async def collab_list_peers(request: Request):
     """Owner-only: list all known peers with online status."""
     _collab_require_owner(request)
@@ -196,7 +199,9 @@ async def collab_list_peers(request: Request):
 
 
 @collab_router.post("/delegate")
+@_limiter.limit("30/minute")
 async def collab_delegate(
+    request: Request,
     body: DelegateRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -235,6 +240,7 @@ async def collab_delegate(
 
 
 @collab_router.get("/memory/search")
+@_limiter.limit("30/minute")
 async def collab_memory_search(
     request: Request,
     q: str = Query(..., min_length=1),
@@ -274,7 +280,9 @@ async def collab_memory_search(
 
 
 @collab_router.post("/broadcast")
+@_limiter.limit("30/minute")
 async def collab_broadcast(
+    request: Request,
     body: BroadcastRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -291,7 +299,9 @@ async def collab_broadcast(
 
 
 @collab_router.get("/feed")
+@_limiter.limit("30/minute")
 async def collab_feed(
+    request: Request,
     limit: int = Query(20, ge=1, le=50),
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)] = None,
 ):
@@ -306,7 +316,9 @@ async def collab_feed(
 
 
 @collab_router.post("/borrow/start")
+@_limiter.limit("30/minute")
 async def collab_borrow_start(
+    request: Request,
     body: BorrowStartRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -359,7 +371,9 @@ async def collab_borrow_start(
 
 
 @collab_router.post("/borrow/message")
+@_limiter.limit("30/minute")
 async def collab_borrow_message(
+    request: Request,
     body: BorrowMessageRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -389,7 +403,9 @@ async def collab_borrow_message(
 
 
 @collab_router.delete("/borrow/{session_id}")
+@_limiter.limit("30/minute")
 async def collab_borrow_end(
+    request: Request,
     session_id: str,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -445,7 +461,8 @@ router = APIRouter(prefix="/bridgenet", tags=["bridgenet"])
 
 
 @router.get("/profile")
-async def bridgenet_get_profile():
+@_limiter.limit("30/minute")
+async def bridgenet_get_profile(request: Request):
     """Public profile endpoint — includes BridgeNet version and relay status."""
     import config as main_config
     from .relay_client import is_relay_online
@@ -475,6 +492,7 @@ async def bridgenet_get_profile():
 
 
 @router.get("/peers")
+@_limiter.limit("30/minute")
 async def bridgenet_list_peers(request: Request):
     """Owner-only: list all known peers with online status."""
     _require_owner_token(request)
@@ -508,6 +526,7 @@ async def bridgenet_list_peers(request: Request):
 
 
 @router.post("/task")
+@_limiter.limit("30/minute")
 async def bridgenet_task(
     request: Request,
     auth: Annotated[tuple[str, dict], Depends(get_relay_or_peer)],
@@ -602,6 +621,7 @@ async def bridgenet_task(
 
 
 @router.post("/result")
+@_limiter.limit("30/minute")
 async def bridgenet_result(
     request: Request,
     body: BridgeNetResultRequest,
@@ -649,6 +669,7 @@ async def bridgenet_result(
 
 
 @router.get("/status")
+@_limiter.limit("30/minute")
 async def bridgenet_status(request: Request):
     """Owner-only: return this node's BridgeNet status.
 
@@ -689,7 +710,9 @@ async def bridgenet_status(request: Request):
 
 
 @router.post("/broadcast")
+@_limiter.limit("30/minute")
 async def bridgenet_broadcast(
+    request: Request,
     body: BroadcastRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -713,7 +736,9 @@ async def bridgenet_broadcast(
 
 
 @router.get("/feed")
+@_limiter.limit("30/minute")
 async def bridgenet_feed(
+    request: Request,
     limit: int = Query(20, ge=1, le=500),
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)] = None,
 ):
@@ -731,7 +756,9 @@ async def bridgenet_feed(
 
 
 @router.post("/borrow/start")
+@_limiter.limit("30/minute")
 async def bridgenet_borrow_start(
+    request: Request,
     body: BorrowStartRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -790,7 +817,9 @@ async def bridgenet_borrow_start(
 
 
 @router.post("/borrow/message")
+@_limiter.limit("30/minute")
 async def bridgenet_borrow_message(
+    request: Request,
     body: BorrowMessageRequest,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):
@@ -823,7 +852,9 @@ async def bridgenet_borrow_message(
 
 
 @router.delete("/borrow/{session_id}")
+@_limiter.limit("30/minute")
 async def bridgenet_borrow_end(
+    request: Request,
     session_id: str,
     peer_auth: Annotated[tuple[str, dict], Depends(get_peer)],
 ):

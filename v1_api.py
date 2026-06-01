@@ -282,7 +282,7 @@ def _pick_model(tier: str, message: str) -> str:
 from typing import Literal  # noqa: E402
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile, File  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
-from server import _limiter  # noqa: E402
+from rate_limiter import _limiter  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 router = APIRouter(prefix="/v1", tags=["bridge-cloud"])

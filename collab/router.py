@@ -20,6 +20,7 @@ from server import _limiter  # noqa: E402
 from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from rate_limiter import _limiter
 
 from .auth import get_peer
 from .config import COLLAB_INSTANCE_NAME, COLLAB_TOKEN, load_peers
@@ -293,7 +294,7 @@ async def feed_endpoint(
 
 
 @router.post("/borrow/start")
-@_limiter.limit("10/minute")
+@_limiter.limit("30/minute")
 async def borrow_start(
     request: Request,
     body: BorrowStartRequest,
