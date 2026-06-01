@@ -248,10 +248,14 @@ def build_skills_prompt(skill_names: list[str]) -> str:
     Reads from the skills DB. Falls back to in-memory SKILL_PACKS if DB lookup fails.
     """
     try:
-        from agent_registry import get_skill
+        from agent_registry import get_skills
+        # ⚡ Bolt Optimization: Batch retrieval resolves N+1 query patterns in SQLite.
+        skills_batch = get_skills(skill_names)
+        skills_dict = {skill.id: skill for skill in skills_batch if skill}
+
         sections = []
         for name in skill_names:
-            skill = get_skill(name)
+            skill = skills_dict.get(name)
             if skill and skill.prompt:
                 sections.append(skill.prompt)
             elif name in SKILL_PACKS:

@@ -28,7 +28,31 @@
 **Learning:** FastAPI's catch-all `/{path:path}` parameter receives the raw requested URI (potentially URL-encoded) which can include `../` path traversal sequences. Using this input directly in `Path()` concatenation and `FileResponse` allows attackers to escape the intended directory and read sensitive server files.
 **Prevention:** Always sanitize and enforce directory boundaries on user-provided file paths. Use `os.path.commonpath([os.path.realpath(target), os.path.realpath(base)]) == os.path.realpath(base)` to ensure the resolved file path strictly resides within the intended directory.
 
+## 2026-04-10 - [Security Improvement] Add rate limiting to proxy endpoints
+**Vulnerability:** The API proxy endpoints (`/api/chat`, `/api/proxy`, `/api/proxy/verify`) in `v1_api.py` lacked rate limiting, making them susceptible to Denial of Service (DoS) attacks and abuse of external API connections.
+**Learning:** All endpoints that perform significant processing or external network requests should be protected by rate limiting. Even endpoints meant to proxy requests to other services need rate limits to prevent abuse.
+**Prevention:** Apply the `@_limiter.limit` decorator (e.g., `@_limiter.limit("30/minute")`) to all FastAPI endpoints, particularly those acting as proxies or making downstream requests.
+
 ## 2024-05-28 - Overly Permissive CORS Configuration
 **Vulnerability:** The FastAPI application used `allow_origins=["*"]` in the `CORSMiddleware` configuration, allowing any domain to make cross-origin requests to the API.
 **Learning:** Using `["*"]` for CORS origins nullifies the security benefits of the Same-Origin Policy, allowing malicious websites to make unauthorized requests to the API on behalf of the user, potentially leading to data exfiltration or Cross-Site Request Forgery (CSRF).
 **Prevention:** Always parse and explicitly whitelist allowed origins using environment variables (e.g., `CORS_ALLOW_ORIGINS`) and default to an empty list `[]` to ensure cross-origin requests are blocked by default unless explicitly configured.
+
+## 2026-04-14 - Missing Rate Limits on FastAPI Endpoints
+**Vulnerability:** Several utility and health-check endpoints in `server.py` (e.g., `/health`, `/status`, `/wa/qr`, `/wa/status`, `/prompts`) were missing rate-limiting decorators, potentially exposing the server to denial-of-service (DoS) or enumeration attacks through excessive, unauthenticated requests.
+**Learning:** The `slowapi` rate limiter decorator (`@_limiter.limit`) requires access to the client identifier, which it extracts from the `Request` object. Endpoints without a `request: Request` parameter in their function signature cannot be rate-limited using this standard middleware setup without causing a `TypeError` at runtime, leading to unprotected utility routes.
+**Prevention:** When adding new FastAPI endpoints, always ensure the `request: Request` parameter is included in the function signature if rate-limiting might be required, and proactively apply the `@_limiter.limit` decorator to all public-facing or unauthenticated routes.
+
+## 2024-05-28 - SSRF Prevention via Custom Network Backend (DNS Rebinding)
+**Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
+**Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
+**Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
+
+## 2024-05-28 - SSRF Prevention via Custom Network Backend (DNS Rebinding)
+**Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
+**Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
+**Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
+## 2026-05-12 - Prevent Path Traversal in pathlib.Path Concatenation
+**Vulnerability:** The catch-all SPA route `serve_bridge_cloud_ui` in `server.py` concatenated a base path with user input (`_BC_BUILD / full_path`) without sanitizing leading slashes, allowing an attacker to pass an absolute path like `/etc/passwd` which overwrites the base path entirely.
+**Learning:** In Python's `pathlib`, joining a base `Path` with a string that starts with a slash (`/`) causes the string to be treated as an absolute path, completely ignoring the base directory.
+**Prevention:** Always strip leading slashes from user-provided path segments (e.g., `user_input.lstrip('/')`) before joining them with a base directory using `pathlib.Path` to enforce proper directory scoping.
