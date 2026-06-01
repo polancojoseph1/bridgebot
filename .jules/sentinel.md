@@ -52,7 +52,8 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
-## 2026-05-11 - Fix SSRF getaddrinfo bypass in URL validation
-**Vulnerability:** The `_is_safe_url` function used `socket.gethostbyname`, which only resolves a single IPv4 address, allowing attackers to bypass SSRF validation using IPv6 or multiple DNS records.
-**Learning:** Checking a single IPv4 address is insufficient for SSRF protection because attackers can use DNS rebinding or multiple A/AAAA records to point to a private IP.
-**Prevention:** Always use `socket.getaddrinfo` with `socket.AF_UNSPEC` to resolve all IPv4 and IPv6 addresses and validate every single one against private, loopback, and reserved ranges.
+
+## 2024-05-28 - SSRF IPv6 Evasion via gethostbyname
+**Vulnerability:** The `_is_safe_url` SSRF pre-flight check in `v1_api.py` used `socket.gethostbyname()`, which only resolves IPv4 addresses. An attacker could supply a domain that resolves to a safe IPv4 but a private IPv6 (e.g., `::1`). `_is_safe_url` would validate the IPv4 and allow the connection, but the underlying HTTP client could connect to the internal IPv6 address.
+**Learning:** Functions that only resolve IPv4 (like `gethostbyname`) are insufficient for SSRF checks when modern network backends (like `httpx`) resolve and connect to both IPv4 and IPv6.
+**Prevention:** Always use `socket.getaddrinfo(..., socket.AF_UNSPEC)` to fetch all IPv4 and IPv6 records for a hostname, and iterate over all resolved IPs, rejecting the URL if *any* of them fall into a private, loopback, or reserved range.
