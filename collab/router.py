@@ -15,6 +15,8 @@ import logging
 import time
 from typing import Annotated
 
+from server import _limiter  # noqa: E402
+
 from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
