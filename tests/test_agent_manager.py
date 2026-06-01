@@ -112,7 +112,7 @@ def test_get_running_instance_in_map_but_removed(clean_agent_map):
 
     mock_inst_other = MagicMock()
     mock_inst_other.agent_id = "agent_other"
-    mock_instances.list_all.return_value = [mock_inst_other]
+    mock_instances.iter_all.return_value = [mock_inst_other]
 
     _agent_instance_map["agent_2"] = 999
 
@@ -121,7 +121,7 @@ def test_get_running_instance_in_map_but_removed(clean_agent_map):
     assert result is None
     assert "agent_2" not in _agent_instance_map
     mock_instances.get.assert_called_once_with(999)
-    mock_instances.list_all.assert_called_once()
+    mock_instances.iter_all.assert_called_once()
 
 
 def test_get_running_instance_fallback_scan(clean_agent_map):
@@ -131,7 +131,7 @@ def test_get_running_instance_fallback_scan(clean_agent_map):
     mock_inst.agent_id = "agent_3"
     mock_inst.id = 456
 
-    mock_instances.list_all.return_value = [mock_inst]
+    mock_instances.iter_all.return_value = [mock_inst]
 
     assert "agent_3" not in _agent_instance_map
 
