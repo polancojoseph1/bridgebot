@@ -52,8 +52,7 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
-
-## 2024-05-02 - Missing Rate Limits on Bridgenet and Collab Endpoints
-**Vulnerability:** Several endpoints in `bridgenet/router.py` and `collab/router.py` (like `/profile`, `/peers`, `/task`, `/delegate`, `/broadcast`, `/feed`, etc.) were missing rate-limiting decorators, potentially exposing the server to DoS or enumeration attacks through unauthenticated or authenticated abuse.
-**Learning:** Endpoints mapped through auxiliary routers like `APIRouter` inside modular files must explicitly have the `@_limiter.limit` decorator applied just like the main application routes, and their signatures must include `request: Request` to satisfy the SlowAPI dependency.
-**Prevention:** Always verify that newly added auxiliary routers and their endpoints (e.g., in `/bridgenet` or `/collab`) explicitly import and apply the rate limiter, and correctly inject the `request` object into their signatures.
+## 2026-05-11 - Fix SSRF getaddrinfo bypass in URL validation
+**Vulnerability:** The `_is_safe_url` function used `socket.gethostbyname`, which only resolves a single IPv4 address, allowing attackers to bypass SSRF validation using IPv6 or multiple DNS records.
+**Learning:** Checking a single IPv4 address is insufficient for SSRF protection because attackers can use DNS rebinding or multiple A/AAAA records to point to a private IP.
+**Prevention:** Always use `socket.getaddrinfo` with `socket.AF_UNSPEC` to resolve all IPv4 and IPv6 addresses and validate every single one against private, loopback, and reserved ranges.
