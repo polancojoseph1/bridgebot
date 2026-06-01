@@ -406,12 +406,12 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
 def _is_any_processing() -> bool:
     """Check if any instance is currently processing."""
-    return any(inst.processing for inst in instances.list_all())
+    return any(inst.processing for inst in instances.iter_all())
 
 
 def _total_queue_size() -> int:
     """Total pending messages across all instance queues."""
-    return sum(inst.queue.qsize() for inst in instances.list_all() if inst.queue)
+    return sum(inst.queue.qsize() for inst in instances.iter_all() if inst.queue)
 
 
 
@@ -858,7 +858,7 @@ async def lifespan(application: FastAPI):
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
     # Stop all instance workers
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         if inst.worker_task and not inst.worker_task.done():
             inst.worker_task.cancel()
             try:
@@ -1221,8 +1221,7 @@ async def process_update(body: dict) -> None:
     # One-shot direct message: @<id or name> <message>
     # Routes to a specific instance WITHOUT changing the active instance.
     # Supports: @2 hey, @Research what's the status?, @ChatGPT summarize this
-    import re as _re
-    _oneshot_match = _re.match(r'^@(\S+)\s+([\s\S]+)$', text.strip())
+    _oneshot_match = _RE_ONESHOT.match(text.strip())
     if _oneshot_match:
         target_ref = _oneshot_match.group(1)
         oneshot_text = _oneshot_match.group(2).strip()
@@ -1531,9 +1530,10 @@ if _BC_BUILD.exists():
         return FileResponse(path, headers=_NO_CACHE_HEADERS)
 
     @app.get("/{full_path:path}")
-    async def serve_bridge_cloud_ui(full_path: str):
+    @_limiter.limit("1200/minute")
+    async def serve_bridge_cloud_ui(request: Request, full_path: str):
         """SPA catch-all: serve Bridge Cloud static files, fallback to SPA shell."""
-        candidate = _BC_BUILD / full_path
+        candidate = _BC_BUILD / full_path.lstrip("/")
 
         try:
             if os.path.commonpath([os.path.realpath(candidate), os.path.realpath(_BC_BUILD)]) != os.path.realpath(_BC_BUILD):
@@ -1654,6 +1654,8 @@ _MEDIA_PATH_RE = re.compile(
 )
 _RE_EXT = re.compile(r"[^a-zA-Z0-9]")
 _RE_DISPLAY_NAME = re.compile(r"[^a-zA-Z0-9._\- ]")
+_RE_ONESHOT = re.compile(r'^@(\S+)\s+([\s\S]+)$')
+_RE_EVERY_SCHEDULE = re.compile(r"^(every\s+\S+)\s+(.+)$", re.IGNORECASE)
 
 
 _MEDIA_ALLOWED_DIRS = [
@@ -2185,11 +2187,11 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
     elif cmd == "/kill":
         # Nuclear option: kill everything across all instances
-        for inst in instances.list_all():
+        for inst in instances.iter_all():
             inst.clear_queue()
             if inst.current_task and not inst.current_task.done():
                 inst.current_task.cancel()
-        await runner.stop_all(instances.list_all())
+        await runner.stop_all(instances.iter_all())
         await runner.kill_all()
         await send_message(chat_id, "\U0001f480 Killed all Claude processes. All queues cleared.")
 
@@ -2673,7 +2675,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                                 # Schedule is first token (may be "every 2h" = 2 tokens)
                                 remainder = parts[2]
                                 # Try "every Xh/Xm" (2-word schedule) first
-                                every_match = re.match(r"^(every\s+\S+)\s+(.+)$", remainder, re.IGNORECASE)
+                                every_match = _RE_EVERY_SCHEDULE.match(remainder)
                                 if every_match:
                                     sched, task_desc = every_match.group(1), every_match.group(2)
                                 else:
