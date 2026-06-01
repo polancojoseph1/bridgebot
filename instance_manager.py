@@ -344,10 +344,6 @@ class InstanceManager:
 
         return sorted(instances, key=lambda i: i.id)
 
-    def iter_all(self) -> list[Instance]:
-        """Return an unsorted snapshot of all instances."""
-        return list(self._instances.values())
-
     def format_list(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None, bot_name: str = "CLI") -> str:
         """Return a formatted HTML string of instances for display."""
         visible = self.list_all(for_owner_id=for_owner_id, exclude_user_ids=exclude_user_ids)
