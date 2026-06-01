@@ -1,9 +1,6 @@
 import asyncio
 import functools
-<<<<<<< HEAD
 import hashlib
-=======
->>>>>>> main
 import html
 import logging
 import os
@@ -16,6 +13,7 @@ from config import TELEGRAM_API, TELEGRAM_BOT_TOKEN, TELEGRAM_MAX_MESSAGE_LENGTH
 logger = logging.getLogger("bridge.telegram")
 
 _client: httpx.AsyncClient | None = None
+_RE_TABLE_SEP = re.compile(r"^\s*\|[\s\-|:]+\|\s*$")
 
 
 async def get_client() -> httpx.AsyncClient:
@@ -48,7 +46,7 @@ def _convert_markdown_tables(text: str) -> str:
         if (
             "|" in line
             and i + 1 < len(lines)
-            and re.match(r"^\s*\|[\s\-|:]+\|\s*$", lines[i + 1])
+            and _RE_TABLE_SEP.match(lines[i + 1])
         ):
             # Collect all consecutive pipe-containing lines
             table_lines = []
@@ -58,7 +56,7 @@ def _convert_markdown_tables(text: str) -> str:
             # Parse rows, skip separator rows
             rows = []
             for tl in table_lines:
-                if re.match(r"^\s*\|[\s\-|:]+\|\s*$", tl):
+                if _RE_TABLE_SEP.match(tl):
                     continue
                 cells = [c.strip() for c in tl.strip().strip("|").split("|")]
                 rows.append(cells)
@@ -380,11 +378,7 @@ async def register_bot_commands(commands: list[tuple[str, str]]) -> bool:
     return False
 
 
-<<<<<<< HEAD
 @functools.lru_cache(maxsize=1)
-=======
-@functools.lru_cache(maxsize=1024)
->>>>>>> main
 def _webhook_secret_token(bot_token: str) -> str:
     """Derive a stable secret token from the bot token (SHA-256, first 32 hex chars).
     Telegram requires: 1-256 chars, only a-z A-Z 0-9 _ -
