@@ -44,6 +44,11 @@ _chat_id: int = 0
 
 
 # ── Schedule parsing ───────────────────────────────────────────────────────────
+_RE_DAILY = re.compile(r"^\d{1,2}:\d{2}$")
+_RE_EVERY = re.compile(r"^every\s+(?:(\d+)h)?(?:(\d+)m)?$")
+
+_DAILY_RE = re.compile(r"^\d{1,2}:\d{2}$")
+_EVERY_RE = re.compile(r"^every\s+(?:(\d+)h)?(?:(\d+)m)?$")
 
 def parse_schedule(s: str) -> tuple[str, object]:
     """Parse a schedule string. Returns (mode, value).

@@ -75,7 +75,7 @@ def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) ->
     inst.agent_system_prompt = _build_agent_system_prompt(agent)
     # Validate model string: only allow safe characters, max 128 chars
     model = agent.model or ""
-    if model and not re.match(r'^[\w.:/\-]+$', model) or len(model) > 128:
+    if model and not _MODEL_VALIDATION_RE.match(model) or len(model) > 128:
         logger.warning("spawn_agent: invalid model '%s' for agent '%s', using default", model, agent_id)
         model = ""
     inst.model = model
@@ -110,7 +110,7 @@ def get_running_instance(agent_id: str, instances: InstanceManager) -> Instance 
     # Fallback: scan all instances for a matching agent_id.
     # Handles cases where _agent_instance_map was cleared (e.g. server restart)
     # so a second trigger doesn't spawn a duplicate instance.
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         if getattr(inst, "agent_id", None) == agent_id:
             _agent_instance_map[agent_id] = inst.id  # re-register for fast lookups
             return inst
@@ -337,7 +337,7 @@ def format_agent_list(instances: InstanceManager) -> str:
         if inst is not None:
             active_instances[agent_id] = inst
 
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         aid = getattr(inst, "agent_id", None)
         if aid and aid not in active_instances:
             active_instances[aid] = inst

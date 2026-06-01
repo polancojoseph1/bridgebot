@@ -20,9 +20,9 @@ from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles as _StaticFiles
 from pydantic import BaseModel
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from rate_limiter import _limiter
 
 import health
 from config import (
@@ -407,12 +407,12 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
 def _is_any_processing() -> bool:
     """Check if any instance is currently processing."""
-    return any(inst.processing for inst in instances.list_all())
+    return any(inst.processing for inst in instances.iter_all())
 
 
 def _total_queue_size() -> int:
     """Total pending messages across all instance queues."""
-    return sum(inst.queue.qsize() for inst in instances.list_all() if inst.queue)
+    return sum(inst.queue.qsize() for inst in instances.iter_all() if inst.queue)
 
 
 
@@ -859,7 +859,7 @@ async def lifespan(application: FastAPI):
     # Proactive worker does NOT auto-start — use /agent proactive start to enable
     yield
     # Stop all instance workers
-    for inst in instances.list_all():
+    for inst in instances.iter_all():
         if inst.worker_task and not inst.worker_task.done():
             inst.worker_task.cancel()
             try:
@@ -886,7 +886,6 @@ async def lifespan(application: FastAPI):
 _RE_ONESHOT = re.compile(r"^@(\S+)\s+([\s\S]+)$")
 _RE_EVERY = re.compile(r"^(every\s+\S+)\s+(.+)$", re.IGNORECASE)
 app = FastAPI(title="Telegram-Claude Bridge", lifespan=lifespan)
-_limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = _limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -1533,9 +1532,10 @@ if _BC_BUILD.exists():
         return FileResponse(path, headers=_NO_CACHE_HEADERS)
 
     @app.get("/{full_path:path}")
-    async def serve_bridge_cloud_ui(full_path: str):
+    @_limiter.limit("1200/minute")
+    async def serve_bridge_cloud_ui(request: Request, full_path: str):
         """SPA catch-all: serve Bridge Cloud static files, fallback to SPA shell."""
-        candidate = _BC_BUILD / full_path
+        candidate = _BC_BUILD / full_path.lstrip("/")
 
         try:
             if os.path.commonpath([os.path.realpath(candidate), os.path.realpath(_BC_BUILD)]) != os.path.realpath(_BC_BUILD):
@@ -1656,6 +1656,8 @@ _MEDIA_PATH_RE = re.compile(
 )
 _RE_EXT = re.compile(r"[^a-zA-Z0-9]")
 _RE_DISPLAY_NAME = re.compile(r"[^a-zA-Z0-9._\- ]")
+_RE_ONESHOT = re.compile(r'^@(\S+)\s+([\s\S]+)$')
+_RE_EVERY_SCHEDULE = re.compile(r"^(every\s+\S+)\s+(.+)$", re.IGNORECASE)
 
 
 _MEDIA_ALLOWED_DIRS = [
@@ -2187,11 +2189,11 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
     elif cmd == "/kill":
         # Nuclear option: kill everything across all instances
-        for inst in instances.list_all():
+        for inst in instances.iter_all():
             inst.clear_queue()
             if inst.current_task and not inst.current_task.done():
                 inst.current_task.cancel()
-        await runner.stop_all(instances.list_all())
+        await runner.stop_all(instances.iter_all())
         await runner.kill_all()
         await send_message(chat_id, "\U0001f480 Killed all Claude processes. All queues cleared.")
 

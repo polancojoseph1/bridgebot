@@ -90,6 +90,11 @@ _WEEKDAYS = {
 }
 
 _TIME_RE = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", re.IGNORECASE)
+_RE_INTERVAL = re.compile(r"every\s+(\d+)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)\b")
+_RE_DAILY = re.compile(r"(?:daily|every\s+day)(?:\s+(?:at\s+)?(\S+))?$")
+_RE_WEEKLY = re.compile(r"(?:every|weekly)\s+(\w+)(?:\s+(?:at\s+)?(\S+))?$")
+_RE_ONCE = re.compile(r"once\s+(.+)$")
+_RE_DATE = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?$")
 
 
 def _parse_time(s: str) -> tuple[int, int] | None:
