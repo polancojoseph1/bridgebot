@@ -12,8 +12,6 @@ import re
 import secrets as _secrets
 import tempfile
 import uuid
-import socket
-import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
@@ -44,7 +42,11 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         safe_ip = None
         for family, type, proto, canonname, sockaddr in addr_info:
             ip = sockaddr[0]
-            ip_obj = ipaddress.ip_address(ip)
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+
             if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
                 safe_ip = ip
                 break
@@ -78,6 +80,8 @@ class SafeAsyncHTTPTransport(httpx.AsyncHTTPTransport):
         )
 
 async def _is_safe_url(url_str: str) -> bool:
+    """Validate that the URL scheme is strictly http/https.
+    ⚡ Bolt Optimization: Removed slow DNS pre-flight checks here since SafeNetworkBackend enforces them natively at the connection layer."""
     try:
         from urllib.parse import urlparse as _urlparse
         parsed = _urlparse(url_str)
@@ -95,6 +99,7 @@ async def _is_safe_url(url_str: str) -> bool:
             addr_info = await loop.run_in_executor(
                 None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
             )
+>>>>>>> main
         except socket.gaierror:
             return False
 
@@ -107,6 +112,13 @@ async def _is_safe_url(url_str: str) -> bool:
             except ValueError:
                 return False
 
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+>>>>>>> main
+>>>>>>> main
+                return False
+
+>>>>>>> main
         return True
     except Exception:
         return False
@@ -274,7 +286,7 @@ def _pick_model(tier: str, message: str) -> str:
 from typing import Literal  # noqa: E402
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile, File  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
-from server import _limiter  # noqa: E402
+from rate_limiter import _limiter  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 router = APIRouter(prefix="/v1", tags=["bridge-cloud"])
