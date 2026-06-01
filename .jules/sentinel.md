@@ -52,8 +52,7 @@
 **Vulnerability:** Even when URL schemes and IPs are validated via `is_safe_url`, an attacker can use a DNS Rebinding attack. The validation step might resolve a safe IP, but the subsequent HTTP request by `httpx` might resolve to a private/internal IP (like 127.0.0.1) if the attacker's DNS server changes its response.
 **Learning:** Checking a URL dynamically before making a request is insufficient for SSRF protection because of TOCTOU (Time-of-Check to Time-of-Use) issues caused by standard DNS resolution behavior inside the HTTP client.
 **Prevention:** Always enforce SSRF IP restrictions at the connection layer. In `httpx`, this requires subclassing `httpx.AsyncHTTPTransport` and `httpcore.AsyncNetworkBackend` to perform a single DNS resolution using `socket.getaddrinfo`, validate the IP natively against private ranges, and pass the safe IP directly to the underlying stream.
-
-## 2024-05-28 - SSRF IPv6 Evasion via gethostbyname
-**Vulnerability:** The `_is_safe_url` SSRF pre-flight check in `v1_api.py` used `socket.gethostbyname()`, which only resolves IPv4 addresses. An attacker could supply a domain that resolves to a safe IPv4 but a private IPv6 (e.g., `::1`). `_is_safe_url` would validate the IPv4 and allow the connection, but the underlying HTTP client could connect to the internal IPv6 address.
-**Learning:** Functions that only resolve IPv4 (like `gethostbyname`) are insufficient for SSRF checks when modern network backends (like `httpx`) resolve and connect to both IPv4 and IPv6.
-**Prevention:** Always use `socket.getaddrinfo(..., socket.AF_UNSPEC)` to fetch all IPv4 and IPv6 records for a hostname, and iterate over all resolved IPs, rejecting the URL if *any* of them fall into a private, loopback, or reserved range.
+## 2024-05-24 - Fix Information Exposure in JSON Parser
+**Vulnerability:** The application was returning raw exception details (`str(e)`) to clients when JSON parsing failed.
+**Learning:** Returning exception details from library internals (like `json.decoder.JSONDecodeError`) can expose sensitive information about the backend stack.
+**Prevention:** Catch parsing exceptions, log them securely server-side using `logger.error("...", e, exc_info=True)`, and return generic HTTP error messages (e.g., "Invalid JSON body") to the client.
