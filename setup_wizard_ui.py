@@ -428,7 +428,8 @@ async def restart_wa_bridge():
             await asyncio.sleep(1.2)
             return JSONResponse({"status": "success", "message": "Service restarted"})
         except Exception as e:
-            return JSONResponse({"status": "error", "message": f"Failed to restart service: {e}"})
+            print(f"Failed to restart service: {e}")
+            return JSONResponse({"status": "error", "message": "Failed to restart service"})
 
     systemctl_mode = os.environ.get("BRIDGE_SYSTEMCTL", "")
     if systemctl_mode:
@@ -439,7 +440,8 @@ async def restart_wa_bridge():
             await asyncio.sleep(1.2)
             return JSONResponse({"status": "success", "message": "Service restarted"})
         except Exception as e:
-            return JSONResponse({"status": "error", "message": f"Failed to restart service: {e}"})
+            print(f"Failed to restart service: {e}")
+            return JSONResponse({"status": "error", "message": "Failed to restart service"})
 
     plist = os.path.expanduser("~/Library/LaunchAgents/jefe.whatsapp-bridge.plist")
     auth_dir = os.path.expanduser("~/.jefe/wa-auth")
