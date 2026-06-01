@@ -20,6 +20,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+_RE_SCHED_INTERVAL = re.compile(r"every\s+(\d+)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)\b")
+_RE_SCHED_DAILY = re.compile(r"(?:daily|every\s+day)(?:\s+(?:at\s+)?(\S+))?$")
+_RE_SCHED_WEEKLY = re.compile(r"(?:every|weekly)\s+(\w+)(?:\s+(?:at\s+)?(\S+))?$")
+_RE_SCHED_ONCE = re.compile(r"once\s+(.+)$")
+_RE_SCHED_ONCE_ISO = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?$")
+
 logger = logging.getLogger(__name__)
 
 TIMEZONE = os.environ.get("TIMEZONE", "UTC")
@@ -120,7 +126,7 @@ def parse_recurrence(text: str) -> tuple[str, dict] | None:
     s = text.strip().lower()
 
     # --- interval: "every 30m", "every 2h", "every 1d" ---
-    m = _RE_INTERVAL.match(s)
+    m = _RE_SCHED_INTERVAL.match(s)
     if m:
         val = int(m.group(1))
         unit = m.group(2)[0]
@@ -128,7 +134,7 @@ def parse_recurrence(text: str) -> tuple[str, dict] | None:
         return ("interval", {"minutes": minutes})
 
     # --- daily: "daily", "every day", "daily 9am", "every day at 9:30" ---
-    m = _RE_DAILY.match(s)
+    m = _RE_SCHED_DAILY.match(s)
     if m:
         time_str = m.group(1) or "09:00"
         parsed = _parse_time(time_str)
@@ -136,7 +142,7 @@ def parse_recurrence(text: str) -> tuple[str, dict] | None:
             return ("daily", {"hour": parsed[0], "minute": parsed[1]})
 
     # --- weekly: "every monday", "weekly monday 9am", "every mon at 9:00" ---
-    m = _RE_WEEKLY.match(s)
+    m = _RE_SCHED_WEEKLY.match(s)
     if m:
         day_str = m.group(1)
         if day_str in _WEEKDAYS:
@@ -150,7 +156,7 @@ def parse_recurrence(text: str) -> tuple[str, dict] | None:
                 })
 
     # --- once: "once 2026-03-20", "once 2026-03-20 14:00", "once tomorrow 9am" ---
-    m = _RE_ONCE.match(s)
+    m = _RE_SCHED_ONCE.match(s)
     if m:
         date_str = m.group(1).strip()
         now = _now()
@@ -165,7 +171,7 @@ def parse_recurrence(text: str) -> tuple[str, dict] | None:
                 return ("once", {"dt": dt.isoformat()})
 
         # ISO date: YYYY-MM-DD [HH:MM]
-        dm = _RE_DATE.match(date_str)
+        dm = _RE_SCHED_ONCE_ISO.match(date_str)
         if dm:
             date_part = dm.group(1)
             time_part = dm.group(2) or "09:00"

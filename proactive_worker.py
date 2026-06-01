@@ -31,6 +31,9 @@ logger = logging.getLogger("bridge.proactive_worker")
 LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "UTC"))
 CHECK_INTERVAL = 30  # seconds — check every 30s for precision
 
+_RE_DAILY = re.compile(r"^\d{1,2}:\d{2}$")
+_RE_INTERVAL = re.compile(r"^every\s+(?:(\d+)h)?(?:(\d+)m)?$")
+
 # ── State ─────────────────────────────────────────────────────────────────────
 _running: bool = False
 _worker_task: asyncio.Task | None = None
@@ -66,7 +69,7 @@ def parse_schedule(s: str) -> tuple[str, object]:
         return ("daily", f"{int(h):02d}:{int(m):02d}")
 
     # "every Xh", "every Xm", "every XhYm"
-    m_full = _RE_EVERY.match(s)
+    m_full = _RE_INTERVAL.match(s)
     if m_full:
         hours = int(m_full.group(1) or 0)
         mins = int(m_full.group(2) or 0)

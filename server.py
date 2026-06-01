@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import time
+
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -882,6 +883,8 @@ async def lifespan(application: FastAPI):
     logger.info("Bridge shut down")
 
 
+_RE_ONESHOT = re.compile(r"^@(\S+)\s+([\s\S]+)$")
+_RE_EVERY = re.compile(r"^(every\s+\S+)\s+(.+)$", re.IGNORECASE)
 app = FastAPI(title="Telegram-Claude Bridge", lifespan=lifespan)
 app.state.limiter = _limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -2674,7 +2677,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                                 # Schedule is first token (may be "every 2h" = 2 tokens)
                                 remainder = parts[2]
                                 # Try "every Xh/Xm" (2-word schedule) first
-                                every_match = _RE_EVERY_SCHEDULE.match(remainder)
+                                every_match = _RE_EVERY.match(remainder)
                                 if every_match:
                                     sched, task_desc = every_match.group(1), every_match.group(2)
                                 else:

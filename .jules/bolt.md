@@ -25,7 +25,7 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
-## 2025-05-18 - [Optimize InstanceManager.list_all O(N log N) overhead]
-**Learning:** Calling `instances.list_all()` returned a sorted list of all instances by ID (an O(N log N) operation), which was repeatedly called in non-display critical paths in `server.py` (e.g., `_is_any_processing`, `_total_queue_size`, and `/kill` commands) and `agent_manager.py`. This introduces unnecessary sorting overhead when merely iterating to check statuses or compute sums. Furthermore, returning a generator object over the underlying dictionary can cause "dictionary changed size during iteration" errors if callers `await` tasks inside the loop.
-**Action:** Introduced `instances.iter_all()` that returns an unsorted list snapshot (`list(self._instances.values())`), providing O(N) iteration that is safe for async loops and completely bypasses the O(N log N) sorting cost for internal programmatic use cases where display order is irrelevant.
+## 2025-03-03 - [Optimize re.sub execution]
+**Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
+**Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
 >>>>>>> main

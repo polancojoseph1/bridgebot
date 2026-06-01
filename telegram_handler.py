@@ -12,6 +12,8 @@ from config import TELEGRAM_API, TELEGRAM_BOT_TOKEN, TELEGRAM_MAX_MESSAGE_LENGTH
 
 logger = logging.getLogger("bridge.telegram")
 
+_RE_TABLE_ROW = re.compile(r"^\s*\|[\s\-|:]+\|\s*$")
+
 _client: httpx.AsyncClient | None = None
 _RE_TABLE_SEP = re.compile(r"^\s*\|[\s\-|:]+\|\s*$")
 
@@ -46,7 +48,7 @@ def _convert_markdown_tables(text: str) -> str:
         if (
             "|" in line
             and i + 1 < len(lines)
-            and _RE_TABLE_SEP.match(lines[i + 1])
+            and _RE_TABLE_ROW.match(lines[i + 1])
         ):
             # Collect all consecutive pipe-containing lines
             table_lines = []
@@ -56,7 +58,7 @@ def _convert_markdown_tables(text: str) -> str:
             # Parse rows, skip separator rows
             rows = []
             for tl in table_lines:
-                if _RE_TABLE_SEP.match(tl):
+                if _RE_TABLE_ROW.match(tl):
                     continue
                 cells = [c.strip() for c in tl.strip().strip("|").split("|")]
                 rows.append(cells)
