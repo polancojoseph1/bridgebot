@@ -42,7 +42,10 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         safe_ip = None
         for family, type, proto, canonname, sockaddr in addr_info:
             ip = sockaddr[0]
-            ip_obj = ipaddress.ip_address(ip)
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
             if not (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved):
                 safe_ip = ip
                 break
@@ -92,14 +95,16 @@ async def _is_safe_url(url_str: str) -> bool:
 
         loop = asyncio.get_running_loop()
         try:
-            # Run getaddrinfo in a thread pool to avoid blocking the event loop
-            addr_info = await loop.run_in_executor(None, socket.getaddrinfo, hostname, parsed.port or 80, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            addr_info = await loop.run_in_executor(None, socket.getaddrinfo, hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         except socket.gaierror:
             return False
 
         for family, type, proto, canonname, sockaddr in addr_info:
             ip = sockaddr[0]
-            ip_obj = ipaddress.ip_address(ip)
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
                 return False
 
