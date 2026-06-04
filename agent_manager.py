@@ -34,6 +34,8 @@ from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_def
 from agent_skills import build_skills_prompt
 from instance_manager import InstanceManager, Instance
 
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_-]+:[a-zA-Z0-9_.-]+$")
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_-]+:[a-zA-Z0-9_.-]+$")
 logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
@@ -75,7 +77,7 @@ def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) ->
     inst.agent_system_prompt = _build_agent_system_prompt(agent)
     # Validate model string: only allow safe characters, max 128 chars
     model = agent.model or ""
-    if model and not _MODEL_VALIDATION_RE.match(model) or len(model) > 128:
+    if model and not re.match(r"^[a-zA-Z0-9_-]+:[a-zA-Z0-9_.-]+$", model) or len(model) > 128:
         logger.warning("spawn_agent: invalid model '%s' for agent '%s', using default", model, agent_id)
         model = ""
     inst.model = model
