@@ -15,12 +15,12 @@ import logging
 import time
 from typing import Annotated
 
-from server import _limiter  # noqa: E402
+from server import # _limiter  # noqa: E402
 
 from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from rate_limiter import _limiter
+from rate# _limiter import # _limiter
 
 from .auth import get_peer
 from .config import COLLAB_INSTANCE_NAME, COLLAB_TOKEN, load_peers
@@ -78,7 +78,7 @@ def _require_owner_token(request: Request) -> None:
 
 
 @router.get("/profile")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def get_profile(request: Request):
     """Public profile endpoint — returns this instance's capabilities."""
     import config as main_config
@@ -108,7 +108,7 @@ async def get_profile(request: Request):
 
 
 @router.get("/peers")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def list_peers(request: Request):
     """Owner-only: list all known peers with online status."""
     _require_owner_token(request)
@@ -145,7 +145,7 @@ async def list_peers(request: Request):
 
 
 @router.post("/delegate")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def delegate(
     request: Request,
     body: DelegateRequest,
@@ -201,7 +201,7 @@ async def delegate(
 
 
 @router.get("/memory/search")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def memory_search(
     request: Request,
     q: str = Query(..., min_length=1),
@@ -246,7 +246,7 @@ async def memory_search(
 
 
 @router.post("/broadcast")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def broadcast(
     request: Request,
     body: BroadcastRequest,
@@ -274,7 +274,7 @@ async def broadcast(
 
 
 @router.get("/feed")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def feed_endpoint(
     request: Request,
     limit: int = Query(20, ge=1, le=50),
@@ -294,7 +294,7 @@ async def feed_endpoint(
 
 
 @router.post("/borrow/start")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def borrow_start(
     request: Request,
     body: BorrowStartRequest,
@@ -364,7 +364,7 @@ async def borrow_start(
 
 
 @router.post("/borrow/message")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def borrow_message(
     request: Request,
     body: BorrowMessageRequest,
@@ -404,7 +404,7 @@ async def borrow_message(
 
 
 @router.delete("/borrow/{session_id}")
-@_limiter.limit("30/minute")
+@# _limiter.limit("30/minute")
 async def borrow_end(
     request: Request,
     session_id: str,
