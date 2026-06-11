@@ -84,6 +84,8 @@ async def _is_safe_url(url_str: str) -> bool:
     ⚡ Bolt Optimization: Removed slow DNS pre-flight checks here since SafeNetworkBackend enforces them natively at the connection layer."""
     try:
         from urllib.parse import urlparse as _urlparse
+        import socket
+        import ipaddress
         parsed = _urlparse(url_str)
         if parsed.scheme not in ("http", "https"):
             return False
@@ -111,7 +113,6 @@ async def _is_safe_url(url_str: str) -> bool:
             except ValueError:
                 return False
 
-                return False
 
         return True
     except Exception:
