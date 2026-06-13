@@ -25,7 +25,11 @@
 ## 2025-05-01 - [Resolve N+1 query patterns in agent skills retrieval]
 **Learning:** `build_skills_prompt` iteratively called `get_skill(name)` for every skill required by an agent, leading to an O(N) database query bottleneck (the N+1 query problem) due to executing a separate SQLite `SELECT` query per skill name requested.
 **Action:** Implemented a batch retrieval function `get_skills` using an `IN` clause with parameterized placeholders (`','.join('?' * len(ids))`). Paired this with a local dictionary lookup inside `build_skills_prompt` to transform O(N) database lookups into a single query and achieve O(1) in-memory retrieval during assembly.
+
 ## 2025-03-03 - [Optimize re.sub execution]
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
->>>>>>> main
+
+## 2026-10-24 - [Optimize instance counting length]
+**Learning:** `server.py` and `instance_manager.py` were calling `len(instances.list_all(for_owner_id=...))` frequently. This resulted in O(N) iterations every time because `list_all` filters over all instance dictionaries. Since we already have the `_owner_to_ids` set tracking instances for an owner, generating a filtered list just to check its length is inefficient and creates unneeded memory overhead.
+**Action:** Created `instances.count_for_owner(...)` to check the length of `_owner_to_ids[owner_id]` in O(1) time directly, preventing unnecessary memory allocation and list generation for checking counts.
