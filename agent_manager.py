@@ -14,8 +14,6 @@ Public API:
 """
 
 import logging
-import re
-_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9.-]+$")
 import os
 import re
 from datetime import datetime
@@ -35,6 +33,8 @@ except ImportError:
 from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
 from agent_skills import build_skills_prompt
 from instance_manager import InstanceManager, Instance
+
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9.-]+$")
 
 logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402

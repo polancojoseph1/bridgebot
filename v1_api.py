@@ -5,6 +5,8 @@ These are separate from the Telegram webhook chain.
 """
 import asyncio
 import json
+import socket
+import ipaddress
 import os
 import random
 import logging
