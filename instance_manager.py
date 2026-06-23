@@ -199,8 +199,7 @@ class InstanceManager:
         # Check ownership
         if self._instance_owner.get(instance_id, 0) != owner_id:
             return None
-        owner_instances = self.list_all(for_owner_id=owner_id)
-        if len(owner_instances) <= 1:
+        if self.count_for_owner(owner_id) <= 1:
             return None  # Can't remove the last instance for this owner
         removed = self._instances.pop(instance_id)
         self._remove_owner(instance_id)
@@ -313,9 +312,13 @@ class InstanceManager:
     def get_by_display_num(self, num: int, owner_id: int) -> Instance | None:
         """Return the instance at 1-based display position num within the owner's list."""
         owner_instances = self.list_all(for_owner_id=owner_id)
-        if 1 <= num <= len(owner_instances):
+        if 1 <= num <= self.count_for_owner(owner_id):
             return owner_instances[num - 1]
         return None
+
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances owned by the given owner_id efficiently."""
+        return len(self._owner_to_ids.get(owner_id, set()))
 
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
