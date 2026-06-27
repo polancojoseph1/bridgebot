@@ -12,6 +12,8 @@ import re
 import secrets as _secrets
 import tempfile
 import uuid
+import socket
+import ipaddress
 from typing import Optional, AsyncGenerator
 
 import httpx
@@ -28,8 +30,6 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         self, host: str, port: int, timeout: float = None, local_address=None, **kwargs
     ) -> httpcore.AsyncNetworkStream:
         import asyncio
-        import socket
-        import ipaddress
 
         loop = asyncio.get_running_loop()
         try:
