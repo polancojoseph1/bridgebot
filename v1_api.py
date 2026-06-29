@@ -83,6 +83,8 @@ async def _is_safe_url(url_str: str) -> bool:
     """Validate that the URL scheme is strictly http/https.
     Maintains pre-flight IP checks as defense-in-depth."""
     try:
+        import socket
+        import ipaddress
         from urllib.parse import urlparse as _urlparse
         parsed = _urlparse(url_str)
         if parsed.scheme not in ("http", "https"):
