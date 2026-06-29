@@ -213,12 +213,12 @@ async def collab_delegate(
     if body.agent_id and not check_agent_access(peer, body.agent_id):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to agent '{body.agent_id}' not permitted for your tier",
+            detail="Access to requested agent not permitted for your tier",
         )
     if body.bot and not check_bot_access(peer, body.bot):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to bot '{body.bot}' not permitted for your tier",
+            detail="Access to requested bot not permitted for your tier",
         )
 
     start_ms = int(time.time() * 1000)
@@ -330,7 +330,7 @@ async def collab_borrow_start(
     if body.bot and not check_bot_access(peer, body.bot):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to bot '{body.bot}' not permitted for your tier",
+            detail="Access to requested bot not permitted for your tier",
         )
 
     import config as main_config
@@ -561,12 +561,12 @@ async def bridgenet_task(
         if task_req.agent_id and not check_agent_access(peer, task_req.agent_id):
             raise HTTPException(
                 status_code=403,
-                detail=f"Access to agent '{task_req.agent_id}' not permitted",
+                detail="Access to requested agent not permitted",
             )
         if task_req.bot and not check_bot_access(peer, task_req.bot):
             raise HTTPException(
                 status_code=403,
-                detail=f"Access to bot '{task_req.bot}' not permitted",
+                detail="Access to requested bot not permitted",
             )
 
     # Sanitize task content — strip injection attempts silently
@@ -770,7 +770,7 @@ async def bridgenet_borrow_start(
     if body.bot and not check_bot_access(peer, body.bot):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to bot '{body.bot}' not permitted for your tier",
+            detail="Access to requested bot not permitted for your tier",
         )
 
     import config as main_config
