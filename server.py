@@ -1389,6 +1389,7 @@ async def wa_status_endpoint(request: Request):
 
 
 @app.post("/webhook/whatsapp")
+@_limiter.limit("120/minute")
 async def wa_webhook(request: Request):
     """Receive incoming WhatsApp messages from the Baileys Node.js bridge."""
     import os as _os
@@ -1459,6 +1460,7 @@ async def wa_webhook(request: Request):
 
 
 @app.post("/triggers/webhook/{trigger_id}")
+@_limiter.limit("120/minute")
 async def trigger_webhook(trigger_id: str, request: Request):
     """HTTP endpoint for external event triggers (GitHub, custom webhooks, etc.)."""
     import hashlib
