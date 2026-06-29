@@ -674,9 +674,10 @@ async def v1_provision(
         )
 
     if resp.status_code != 200:
+        logger.error(f"OpenRouter provisioning failed: {resp.status_code} {resp.text[:200]}")
         raise HTTPException(
             status_code=502,
-            detail=f"OpenRouter provisioning failed: {resp.status_code} {resp.text[:200]}",
+            detail="OpenRouter provisioning failed",
         )
 
     data = resp.json()

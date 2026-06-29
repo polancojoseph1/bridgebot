@@ -161,13 +161,13 @@ async def delegate(
     if body.agent_id and not check_agent_access(peer, body.agent_id):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to agent '{body.agent_id}' not permitted for your tier",
+            detail="Access to requested agent not permitted for your tier",
         )
 
     if body.bot and not check_bot_access(peer, body.bot):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to bot '{body.bot}' not permitted for your tier",
+            detail="Access to requested bot not permitted for your tier",
         )
 
     start_ms = int(time.time() * 1000)
@@ -309,7 +309,7 @@ async def borrow_start(
     if body.bot and not check_bot_access(peer, body.bot):
         raise HTTPException(
             status_code=403,
-            detail=f"Access to bot '{body.bot}' not permitted for your tier",
+            detail="Access to requested bot not permitted for your tier",
         )
 
     # Pick the bot to use
