@@ -17,6 +17,7 @@ import logging
 import os
 import re
 from datetime import datetime
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_.:/-]+$")
 from pathlib import Path
 
 try:
