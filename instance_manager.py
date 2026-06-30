@@ -344,6 +344,12 @@ class InstanceManager:
 
         return sorted(instances, key=lambda i: i.id)
 
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances for a given owner using an O(1) dictionary lookup.
+        This optimization avoids the O(N log N) sorting overhead of list_all() when only the count is needed.
+        """
+        return len(self._owner_to_ids.get(owner_id, set()))
+
     def iter_all(self) -> list[Instance]:
         """Return an unsorted list snapshot of all instances."""
         return list(self._instances.values())
