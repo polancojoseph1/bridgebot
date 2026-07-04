@@ -122,6 +122,7 @@ async def _run_ephemeral_direct(trigger_id: str, agent, task: str, chat_id: int)
             logger.warning("[ephemeral] Agent '%s' returned empty result", agent.id)
     except Exception as e:
         logger.error("[ephemeral] Agent '%s' failed: %s", agent.id, e)
-        await _send_fn(chat_id, f"❌ {agent.name} failed: {e}", format_markdown=True)
+        logger.error("%s failed: %s", agent.name, e, exc_info=True)
+        await _send_fn(chat_id, f"❌ {agent.name} failed.", format_markdown=True)
 
     logger.info("[ephemeral] Done: trigger=%s agent=%s", trigger_id, agent.id)
