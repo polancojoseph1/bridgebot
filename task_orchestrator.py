@@ -112,7 +112,8 @@ async def orchestrate(
             await send_fn(chat_id, f"✅ [{st['title']}] done")
         except Exception as exc:
             results[idx] = f"[Agent error: {exc}]"
-            await send_fn(chat_id, f"❌ [{st['title']}] failed: {exc}")
+            logger.error("[%s] failed: %s", st["title"], exc, exc_info=True)
+            await send_fn(chat_id, f"❌ [{st['title']}] failed.")
             logger.exception("Sub-task %d failed", idx + 1)
 
     await asyncio.gather(*[_run_subtask(i, st) for i, st in enumerate(subtasks)])
