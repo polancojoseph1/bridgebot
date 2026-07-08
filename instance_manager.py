@@ -348,6 +348,10 @@ class InstanceManager:
         """Return an unsorted list snapshot of all instances."""
         return list(self._instances.values())
 
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances owned by the given owner without allocating a new list."""
+        return len(self._owner_to_ids.get(owner_id, set()))
+
     def format_list(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None, bot_name: str = "CLI") -> str:
         """Return a formatted HTML string of instances for display."""
         visible = self.list_all(for_owner_id=for_owner_id, exclude_user_ids=exclude_user_ids)
