@@ -295,3 +295,14 @@ def test_remove_does_not_cancel_completed_tasks(manager):
 
     worker_task.cancel.assert_not_called()
     current_task.cancel.assert_not_called()
+
+
+def test_count_for_owner(manager):
+    """Test counting instances without allocating lists."""
+    manager.create("Instance 2", owner_id=1)
+    manager.create("Instance 3", owner_id=1)
+    manager.create("Instance 4", owner_id=2)
+
+    assert manager.count_for_owner(1) == 2
+    assert manager.count_for_owner(2) == 1
+    assert manager.count_for_owner(3) == 0
