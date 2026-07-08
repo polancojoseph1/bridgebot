@@ -29,3 +29,7 @@
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
 >>>>>>> main
+
+## 2025-10-24 - [Optimize instance manager list_all overhead]
+**Learning:** Checking the number of instances for an owner by calling `len(instances.list_all(for_owner_id=X))` triggered an O(N) iteration over an internal dict and sorted the results, which is a massive bottleneck since it simply calculates a length.
+**Action:** Introduced an O(1) method `count_for_owner` that performs a dictionary lookup of a pre-maintained set of IDs. In addition, when executing PR verification testing, it is crucial to test only the modules you touched if you are strictly making a safe modification, avoiding cross-module test failure cascading from unrelated broken code.
