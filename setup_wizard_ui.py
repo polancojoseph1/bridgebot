@@ -1697,7 +1697,7 @@ async function loadBcInfo() {{
 async function generateBcKey() {{
   const btn = document.getElementById('bcGenBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
-  const data = await fetch('/api/generate-bc-key', { method: 'POST' }).then(r => r.json());
+  const data = await fetch('/api/generate-bc-key', { 'method': 'POST' }).then(r => r.json());
   config.BRIDGE_CLOUD_API_KEY = {{ configured: true, masked: data.masked }};
   document.getElementById('bcKeyDisplay').textContent = data.key;
   document.getElementById('bcKeyRow').style.display = 'flex';

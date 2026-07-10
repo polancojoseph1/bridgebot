@@ -18,6 +18,10 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from config import MEMORY_DIR
+from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
+from agent_skills import build_skills_prompt
+from instance_manager import InstanceManager, Instance
 
 _MODEL_VALIDATION_RE = re.compile(r'^[a-zA-Z0-9_./:-]+$')
 
@@ -32,12 +36,7 @@ except ImportError:
         def __call__(self): return self._zi
     LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "UTC"))  # type: ignore
 
-from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
-from agent_skills import build_skills_prompt
-from instance_manager import InstanceManager, Instance
-
 logger = logging.getLogger("bridge.agent_manager")
-from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
 _CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
