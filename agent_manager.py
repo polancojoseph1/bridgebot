@@ -19,6 +19,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+_MODEL_VALIDATION_RE = re.compile(r'^[a-zA-Z0-9_./:-]+$')
+
 try:
     import pytz
     LOCAL_TZ = pytz.timezone(os.environ.get("TIMEZONE", "UTC"))
