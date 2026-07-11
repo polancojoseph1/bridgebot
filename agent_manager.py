@@ -16,6 +16,7 @@ Public API:
 import logging
 import os
 import re
+
 from datetime import datetime
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_def
 from agent_skills import build_skills_prompt
 from instance_manager import InstanceManager, Instance
 
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9./-]+$")
 logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
