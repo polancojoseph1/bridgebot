@@ -20,7 +20,6 @@ from server import _limiter  # noqa: E402
 from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from rate_limiter import _limiter
 
 from .auth import get_peer
 from .config import COLLAB_INSTANCE_NAME, COLLAB_TOKEN, load_peers
