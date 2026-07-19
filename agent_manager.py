@@ -38,6 +38,7 @@ logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_\\-\\.\\/]+$")
 _CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
 _RE_PIPELINE_TASK = re.compile(r'"([^"]+)"\s*$')
 _RE_PIPELINE_SPLIT = re.compile(r"\s*(?:→|->)\s*|\s+")
