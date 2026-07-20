@@ -215,7 +215,7 @@ def test_remove_wrong_owner(manager):
 
 def test_remove_last_instance(manager):
     # manager starts with 1 instance for owner_id=0
-    assert len(manager.list_all(for_owner_id=0)) == 1
+    assert manager.count_for_owner(0) == 1
     assert manager.remove(1, owner_id=0) is None
     # Still exists
     assert manager.get(1) is not None
@@ -295,3 +295,14 @@ def test_remove_does_not_cancel_completed_tasks(manager):
 
     worker_task.cancel.assert_not_called()
     current_task.cancel.assert_not_called()
+
+def test_count_for_owner():
+    manager = InstanceManager()
+    # initially owner 0 has the default instance (1)
+    assert manager.count_for_owner(0) == 1
+    assert manager.count_for_owner(999) == 0
+
+    manager.create("Inst1", owner_id=999)
+    manager.create("Inst2", owner_id=999)
+    assert manager.count_for_owner(999) == 2
+    assert manager.count_for_owner(0) == 1
