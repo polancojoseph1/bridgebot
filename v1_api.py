@@ -15,6 +15,8 @@ import uuid
 from typing import Optional, AsyncGenerator
 
 import httpx
+import socket
+import ipaddress
 import httpcore
 
 logger = logging.getLogger("bridge.v1_api")
@@ -99,7 +101,6 @@ async def _is_safe_url(url_str: str) -> bool:
             addr_info = await loop.run_in_executor(
                 None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
             )
->>>>>>> main
         except socket.gaierror:
             return False
 
@@ -113,12 +114,8 @@ async def _is_safe_url(url_str: str) -> bool:
                 return False
 
             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
->>>>>>> main
->>>>>>> main
                 return False
 
->>>>>>> main
         return True
     except Exception:
         return False
