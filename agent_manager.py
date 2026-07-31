@@ -35,6 +35,8 @@ from agent_skills import build_skills_prompt
 from instance_manager import InstanceManager, Instance
 
 logger = logging.getLogger("bridge.agent_manager")
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_:./-]+$")
+
 from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
