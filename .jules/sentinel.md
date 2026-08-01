@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## 2026-06-25 - Fix command injection via setup wizard restart endpoint
+**Vulnerability:** The setup wizard UI (`setup_wizard_ui.py`) exposed a `restart-wa-bridge` endpoint that used `subprocess.run` to execute a `systemctl` command via `sudo` without checking inputs, creating a vulnerability risk.
+**Learning:** Hardcoding a command that utilizes `sudo` and running it directly in a Python web server instance without elevated privileges provides an insecure design pattern that escalates privileges unnecessarily.
+**Prevention:** Remove the execution of `sudo` commands directly from within API endpoints.
