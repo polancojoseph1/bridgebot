@@ -384,7 +384,7 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
     if inst.queue.full():
         enqueue_owner_id = 0 if item.user_id == ALLOWED_USER_ID else item.user_id
-        owner_count = len(instances.list_all(for_owner_id=enqueue_owner_id))
+        owner_count = instances.count_for_owner(for_owner_id=enqueue_owner_id)
         label = f" [#{instances.display_num(inst.id, enqueue_owner_id)}: {inst.title}]" if owner_count >= 2 else ""
         await send_message(
             item.chat_id,
@@ -395,7 +395,7 @@ async def _enqueue_message(item: QueuedMessage) -> None:
     if inst.processing:
         position = inst.queue.qsize() + 1
         enqueue_owner_id = 0 if item.user_id == ALLOWED_USER_ID else item.user_id
-        owner_count = len(instances.list_all(for_owner_id=enqueue_owner_id))
+        owner_count = instances.count_for_owner(for_owner_id=enqueue_owner_id)
         label = f" [#{instances.display_num(inst.id, enqueue_owner_id)}: {inst.title}]" if owner_count >= 2 else ""
         await send_message(
             item.chat_id,
@@ -1712,7 +1712,7 @@ def _make_progress_handler(chat_id: int, inst, user_id: int, proc_owner_id: int,
             if not _prefs["show_thoughts"]:
                 return  # user doesn't want to see thoughts
             # HTML thinking block — send with HTML parse mode, minimal instance label
-            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
+            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if instances.count_for_owner(for_owner_id=proc_owner_id) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
             if not _prefs["show_tools"]:
@@ -2153,7 +2153,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         # Mark resolved so a future restart doesn't try to resume this task
         _session_store.mark_resolved(chat_id, CLI_RUNNER, inst.id)
 
-        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if len(instances.list_all(for_owner_id=owner_id)) >= 2 else ""
+        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if instances.count_for_owner(for_owner_id=owner_id) >= 2 else ""
         parts = []
         if stopped or task_cancelled:
             parts.append("Stopped current task.")
@@ -2240,7 +2240,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         runner.new_session(inst)
         # Mark resolved — starting fresh, no recovery needed on next restart
         _session_store.mark_resolved(chat_id, CLI_RUNNER, inst.id)
-        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if len(instances.list_all(for_owner_id=owner_id)) >= 2 else ""
+        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if instances.count_for_owner(for_owner_id=owner_id) >= 2 else ""
         await send_message(chat_id, f"\U0001f195 New conversation started. Queue cleared.{label}")
 
     elif cmd == "/server":
@@ -2251,7 +2251,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
     elif cmd == "/help":
         active = instances.get_active_for(owner_id)
-        user_inst_count = len(instances.list_all(for_owner_id=owner_id))
+        user_inst_count = instances.count_for_owner(for_owner_id=owner_id)
         inst_info = f"Active: #{instances.display_num(active.id, owner_id)} ({active.title})" if user_inst_count >= 2 else "1 instance running"
         help_text = (
             "**Commands:**\n\n"
@@ -2532,7 +2532,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                         parse_mode="HTML",
                     )
                 else:
-                    owner_inst_count = len(instances.list_all(for_owner_id=owner_id))
+                    owner_inst_count = instances.count_for_owner(for_owner_id=owner_id)
                     if inst_to_end and owner_inst_count <= 1:
                         await send_message(chat_id, "Can't end the last instance.")
                     else:

@@ -215,7 +215,7 @@ def test_remove_wrong_owner(manager):
 
 def test_remove_last_instance(manager):
     # manager starts with 1 instance for owner_id=0
-    assert len(manager.list_all(for_owner_id=0)) == 1
+    assert manager.count_for_owner(for_owner_id=0) == 1
     assert manager.remove(1, owner_id=0) is None
     # Still exists
     assert manager.get(1) is not None
