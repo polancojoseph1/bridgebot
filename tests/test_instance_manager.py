@@ -295,3 +295,12 @@ def test_remove_does_not_cancel_completed_tasks(manager):
 
     worker_task.cancel.assert_not_called()
     current_task.cancel.assert_not_called()
+
+
+def test_count_for_owner(manager):
+    assert manager.count_for_owner(100) == 0
+    manager.create("Test 1", owner_id=100)
+    manager.create("Test 2", owner_id=100)
+    assert manager.count_for_owner(100) == 2
+    manager.create("Test 3", owner_id=200)
+    assert manager.count_for_owner(200) == 1
