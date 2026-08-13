@@ -28,4 +28,7 @@
 ## 2025-03-03 - [Optimize re.sub execution]
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
->>>>>>> main
+
+## 2025-05-15 - [Optimize length generation overhead in instance enumeration]
+**Learning:** Computing the length of a generated, sorted list by calling `len(instances.list_all(for_owner_id=owner_id))` creates unnecessary O(n log n) overhead when simply trying to find out how many instances a user owns.
+**Action:** Use an O(1) dictionary lookup by checking the length of the associated set in `self._owner_to_ids.get(owner_id, set())` instead.
