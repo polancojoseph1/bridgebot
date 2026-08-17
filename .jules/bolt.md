@@ -28,4 +28,6 @@
 ## 2025-03-03 - [Optimize re.sub execution]
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
->>>>>>> main
+## 2025-05-18 - [Optimize InstanceManager instance counting from O(M log M) to O(1)]
+**Learning:** Calling `len(instances.list_all(for_owner_id=owner_id))` simply to count the number of instances a user has requires allocating a list and iterating over their instances, creating unnecessary O(M) overhead.
+**Action:** Used `instances.count_for_owner(owner_id)` which does a direct O(1) length check on the existing `_owner_to_ids` dictionary set.
