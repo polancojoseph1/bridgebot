@@ -20,7 +20,7 @@ from pathlib import Path
 
 logger = logging.getLogger("bridge.user_access")
 
-from config import ALLOWED_USER_IDS, MEMORY_DIR
+from config import ALLOWED_USER_IDS, MEMORY_DIR  # noqa
 
 _DB_PATH = str(Path(MEMORY_DIR) / "user_access.db")
 

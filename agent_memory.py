@@ -15,7 +15,7 @@ from pathlib import Path
 
 logger = logging.getLogger("bridge.agent_memory")
 
-from config import MEMORY_DIR
+from config import MEMORY_DIR  # noqa
 
 MEMORY_BASE = Path(MEMORY_DIR)
 CHROMA_PATH = str(MEMORY_BASE / ".chroma_db")

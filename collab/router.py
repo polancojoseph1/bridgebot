@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from rate_limiter import _limiter
-from server import _limiter
+from server import _limiter  # noqa
 from task_utils import run_task
 
 from . import borrow as borrow_mgr

@@ -42,7 +42,7 @@ from agent_skills import build_skills_prompt
 from instance_manager import Instance, InstanceManager
 
 logger = logging.getLogger("bridge.agent_manager")
-from config import MEMORY_DIR
+from config import MEMORY_DIR  # noqa
 
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 

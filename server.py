@@ -138,7 +138,7 @@ PROMPTS = {}
 instances = InstanceManager()
 
 # -- Session store (crash recovery) ------------------------------------------
-import session_store as _ss_mod
+import session_store as _ss_mod  # noqa
 
 _session_store = _ss_mod.SessionStore()
 _SHUTDOWN_FLAG = os.path.join(os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.bridgebot")), "pids", f"{CLI_RUNNER}.shutdown_clean")
@@ -919,9 +919,9 @@ app.state.limiter = _limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # -- CORS (Bridge Cloud proxy handles auth; BridgeBot is behind Tailscale) ----
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware  # noqa
 
-from config import CORS_ALLOW_ORIGINS
+from config import CORS_ALLOW_ORIGINS  # noqa
 
 app.add_middleware(
     CORSMiddleware,
@@ -931,7 +931,7 @@ app.add_middleware(
 )
 
 # -- Security Headers Middleware ----------------------------------------------
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -946,8 +946,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 # -- Bridge Cloud v1 API router -----------------------------------------------
-from v1_api import api_router as v1_api_router
-from v1_api import router as v1_router
+from v1_api import api_router as v1_api_router  # noqa
+from v1_api import router as v1_router  # noqa
 
 app.include_router(v1_router)
 app.include_router(v1_api_router)   # /api/chat proxy for static-export frontend

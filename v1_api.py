@@ -97,15 +97,15 @@ async def _is_safe_url(url_str: str) -> bool:
         try:
             # Run getaddrinfo in a thread pool to avoid blocking the event loop
             addr_info = await loop.run_in_executor(
-                None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
+                None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM  # noqa
             )
-        except socket.gaierror:
+        except socket.gaierror:  # noqa
             return False
 
         for family, type, proto, canonname, sockaddr in addr_info:
             ip = sockaddr[0]
             try:
-                ip_obj = ipaddress.ip_address(ip)
+                ip_obj = ipaddress.ip_address(ip)  # noqa
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
                     return False
             except ValueError:
@@ -278,9 +278,9 @@ def _pick_model(tier: str, message: str) -> str:
     # Remaining 85% → Chinese mix (40/20/25 normalised)
     return random.choices(_OBSESSED_CHINESE_MODELS, weights=_OBSESSED_CHINESE_WEIGHTS, k=1)[0]
 
-from typing import Literal
+from typing import Literal  # noqa
 
-from fastapi import (
+from fastapi import (  # noqa
     APIRouter,
     File,
     Header,
@@ -288,10 +288,10 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse  # noqa
+from pydantic import BaseModel, Field  # noqa
 
-from rate_limiter import _limiter
+from rate_limiter import _limiter  # noqa
 
 router = APIRouter(prefix="/v1", tags=["bridge-cloud"])
 
