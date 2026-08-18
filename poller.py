@@ -15,11 +15,11 @@ No GitHub webhook configuration required.
 import json
 import logging
 import os
+import re
 import sqlite3
 import subprocess
 import time
 import urllib.request
-import re
 
 _BRANCH_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9/_.-]*[a-zA-Z0-9]$")
 

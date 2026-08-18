@@ -34,8 +34,8 @@ async def fire(trigger_id: str) -> bool:
     then runs the agent task in the background.
     Returns True if the trigger was found and dispatched, False otherwise.
     """
-    from trigger_registry import get_trigger, record_fired
     from agent_registry import resolve_agent
+    from trigger_registry import get_trigger, record_fired
 
     if _instance_manager is None or _send_fn is None:
         logger.error("Trigger worker not initialized — call init() at startup")
@@ -72,8 +72,8 @@ async def _run_agent(trigger_id: str, agent_id: str, agent_name: str, task: str,
     directly as a background process and send one plain message when done.
     Non-ephemeral agents go through assign_task() as before.
     """
-    from agent_registry import get_agent
     from agent_manager import assign_task
+    from agent_registry import get_agent
 
     agent = get_agent(agent_id)
     if agent and agent.ephemeral:
@@ -92,9 +92,9 @@ async def _run_agent(trigger_id: str, agent_id: str, agent_name: str, task: str,
 
 async def _run_ephemeral_direct(trigger_id: str, agent, task: str, chat_id: int) -> None:
     """Run an ephemeral agent directly — no Telegram instance created, no label, one plain message."""
-    from runners import create_runner
     from agent_manager import _build_agent_system_prompt
     from instance_manager import Instance
+    from runners import create_runner
 
     logger.info("[ephemeral] Starting direct run: trigger=%s agent=%s", trigger_id, agent.id)
 

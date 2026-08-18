@@ -6,6 +6,7 @@ Enable with DAILY_REPORT_ENABLED=true in your .env (disabled by default).
 
 import datetime
 import os
+
 from config import MEMORY_DIR
 
 DAILY_REPORT_ENABLED: bool = os.environ.get("DAILY_REPORT_ENABLED", "false").lower() == "true"

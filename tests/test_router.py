@@ -1,7 +1,8 @@
 """Tests for the message router."""
-import pytest
 import os
+
 import httpx
+import pytest
 
 # Minimal env so config imports don't crash
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "1234567890:AAtesttoken")
@@ -9,8 +10,10 @@ os.environ.setdefault("ALLOWED_USER_ID", "12345678")
 os.environ.setdefault("CLI_RUNNER", "generic")
 os.environ.setdefault("CLI_COMMAND", "echo")
 
-from router import route_message
 from unittest.mock import MagicMock, patch
+
+from router import route_message
+
 
 @pytest.fixture
 def mock_httpx_post():

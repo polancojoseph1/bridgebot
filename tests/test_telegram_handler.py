@@ -8,10 +8,10 @@ os.environ.setdefault("CLI_RUNNER", "generic")
 os.environ.setdefault("CLI_COMMAND", "echo")
 
 from telegram_handler import (
+    _convert_markdown_tables,
     markdown_to_telegram_html,
     split_message,
     strip_html_tags,
-    _convert_markdown_tables,
 )
 
 

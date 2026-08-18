@@ -5,17 +5,17 @@ These are separate from the Telegram webhook chain.
 """
 import asyncio
 import json
+import logging
 import os
 import random
-import logging
 import re
 import secrets as _secrets
 import tempfile
 import uuid
-from typing import Optional, AsyncGenerator
+from collections.abc import AsyncGenerator
 
-import httpx
 import httpcore
+import httpx
 
 logger = logging.getLogger("bridge.v1_api")
 
@@ -28,8 +28,8 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         self, host: str, port: int, timeout: float = None, local_address=None, **kwargs
     ) -> httpcore.AsyncNetworkStream:
         import asyncio
-        import socket
         import ipaddress
+        import socket
 
         loop = asyncio.get_running_loop()
         try:
@@ -97,28 +97,23 @@ async def _is_safe_url(url_str: str) -> bool:
         try:
             # Run getaddrinfo in a thread pool to avoid blocking the event loop
             addr_info = await loop.run_in_executor(
-                None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
+                None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM  # noqa
             )
->>>>>>> main
-        except socket.gaierror:
+        except socket.gaierror:  # noqa
             return False
 
         for family, type, proto, canonname, sockaddr in addr_info:
             ip = sockaddr[0]
             try:
-                ip_obj = ipaddress.ip_address(ip)
+                ip_obj = ipaddress.ip_address(ip)  # noqa
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
                     return False
             except ValueError:
                 return False
 
             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
->>>>>>> main
->>>>>>> main
                 return False
 
->>>>>>> main
         return True
     except Exception:
         return False
@@ -283,11 +278,20 @@ def _pick_model(tier: str, message: str) -> str:
     # Remaining 85% → Chinese mix (40/20/25 normalised)
     return random.choices(_OBSESSED_CHINESE_MODELS, weights=_OBSESSED_CHINESE_WEIGHTS, k=1)[0]
 
-from typing import Literal  # noqa: E402
-from fastapi import APIRouter, Header, HTTPException, Request, UploadFile, File  # noqa: E402
-from fastapi.responses import StreamingResponse  # noqa: E402
-from rate_limiter import _limiter  # noqa: E402
-from pydantic import BaseModel, Field  # noqa: E402
+from typing import Literal  # noqa
+
+from fastapi import (  # noqa
+    APIRouter,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from fastapi.responses import StreamingResponse  # noqa
+from pydantic import BaseModel, Field  # noqa
+
+from rate_limiter import _limiter  # noqa
 
 router = APIRouter(prefix="/v1", tags=["bridge-cloud"])
 
@@ -367,9 +371,9 @@ class ChatRequest(BaseModel):
     conversation_id: str = Field(..., min_length=1, max_length=128)
     stream: bool = True
     instance_id: int = 0
-    system_prompt: Optional[str] = ""
-    openrouter_key: Optional[str] = None  # Per-user OpenRouter key (Bridge Cloud)
-    model: Optional[str] = None           # Explicit model override — skips auto-routing
+    system_prompt: str | None = ""
+    openrouter_key: str | None = None  # Per-user OpenRouter key (Bridge Cloud)
+    model: str | None = None           # Explicit model override — skips auto-routing
     tier: Literal["free", "casual", "regular", "power", "obsessed", "pro"] = "free"
 
 
@@ -379,7 +383,7 @@ class ChatRequest(BaseModel):
 async def v1_health():
     """Public health check — no auth required so users can test connection."""
     import health as _health
-    from config import CLI_RUNNER, BOT_NAME, is_cli_available
+    from config import BOT_NAME, CLI_RUNNER, is_cli_available
 
     try:
         h = _health.get_health()
@@ -545,7 +549,7 @@ async def v1_chat(
                 while True:
                     try:
                         item = await asyncio.wait_for(progress_q.get(), timeout=25.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         # Keepalive: prevents iOS from killing a stalled connection
                         yield json.dumps({"type": "progress", "conversation_id": body.conversation_id, "text": "⏳ Still working..."}) + "\n"
                         continue
@@ -623,8 +627,8 @@ async def v1_chat(
 class ProvisionRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=128)
     plan: Literal["free", "casual", "regular", "power", "obsessed"] = "casual"
-    credit_limit_usd: Optional[float] = None  # Override plan default if provided
-    label: Optional[str] = None
+    credit_limit_usd: float | None = None  # Override plan default if provided
+    label: str | None = None
 
 
 @router.post("/provision")

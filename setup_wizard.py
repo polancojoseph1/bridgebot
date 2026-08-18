@@ -8,11 +8,11 @@ Re-run anytime to change settings — your existing config is preserved.
 """
 
 import os
-import sys
-import shutil
-import subprocess
 import platform
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 _RE_ANSI = re.compile(r'\x1b\[[0-9;]*m')
@@ -49,7 +49,7 @@ try:
 except ImportError:
     _missing.append("httpx")
 try:
-    from dotenv import set_key, dotenv_values
+    from dotenv import dotenv_values, set_key
 except ImportError:
     _missing.append("python-dotenv")
 
@@ -1405,8 +1405,8 @@ def _free_port(port: int) -> None:
 
 def _start_cloudflared_tunnel(port: str, existing: dict) -> str | None:
     """Start a cloudflared quick tunnel, capture the URL, register the Telegram webhook."""
-    import time
     import threading
+    import time
 
     token = existing.get("TELEGRAM_BOT_TOKEN", "")
     print()

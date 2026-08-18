@@ -11,10 +11,10 @@ Key concepts:
     call get_all_sessions() and restore instances.
 """
 
+import logging
 import os
 import sqlite3
 import time
-import logging
 from pathlib import Path
 
 logger = logging.getLogger("bridge.session_store")

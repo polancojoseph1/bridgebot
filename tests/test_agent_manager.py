@@ -1,5 +1,6 @@
 """Tests for agent_manager.py"""
 import os
+
 import pytest
 
 # Minimal env so config imports don't crash
@@ -9,12 +10,16 @@ os.environ.setdefault("CLI_RUNNER", "generic")
 os.environ.setdefault("CLI_COMMAND", "echo")
 os.environ.setdefault("ENV_FILE", "/dev/null")
 
-from unittest.mock import Mock, MagicMock
-from agent_registry import AgentDefinition
-from instance_manager import InstanceManager, Instance
-from agent_manager import parse_pipeline_command, get_running_instance, _agent_instance_map
+from unittest.mock import MagicMock, Mock
 
 import agent_manager
+from agent_manager import (
+    _agent_instance_map,
+    get_running_instance,
+    parse_pipeline_command,
+)
+from agent_registry import AgentDefinition
+from instance_manager import Instance, InstanceManager
 
 
 def test_spawn_agent_returns_none_if_agent_not_found(monkeypatch):

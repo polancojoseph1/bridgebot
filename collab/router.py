@@ -15,19 +15,19 @@ import logging
 import time
 from typing import Annotated
 
-from server import _limiter  # noqa: E402
-
-from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from rate_limiter import _limiter
 
+from rate_limiter import _limiter
+from server import _limiter  # noqa
+from task_utils import run_task
+
+from . import borrow as borrow_mgr
+from . import client as collab_client
 from .auth import get_peer
 from .config import COLLAB_INSTANCE_NAME, COLLAB_TOKEN, load_peers
 from .feed import append_event, get_feed
 from .permissions import can, check_agent_access, check_bot_access, get_memory_scope
-from . import client as collab_client
-from . import borrow as borrow_mgr
 
 logger = logging.getLogger("bridge.collab.router")
 
@@ -341,8 +341,8 @@ async def borrow_start(
 
     # Notify owner via Telegram
     try:
-        from telegram_handler import send_message as _tg_send
         import config as _cfg
+        from telegram_handler import send_message as _tg_send
         asyncio.create_task(_tg_send(
             _cfg.ALLOWED_USER_ID,
             f"Borrow session started: {peer_name} is now using your {bot} bot.",
@@ -439,8 +439,8 @@ async def borrow_end(
 
     # Notify owner via Telegram
     try:
-        from telegram_handler import send_message as _tg_send
         import config as _cfg
+        from telegram_handler import send_message as _tg_send
         asyncio.create_task(_tg_send(
             _cfg.ALLOWED_USER_ID,
             f"{peer_name} has disconnected. Session lasted {int(duration / 60)} minutes.",

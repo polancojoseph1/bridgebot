@@ -22,9 +22,9 @@ import logging
 import os
 import sys
 import time
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from runners.base import RunnerBase, _SUBPROCESS_LOGGER
+from runners.base import _SUBPROCESS_LOGGER, RunnerBase
 
 logger = logging.getLogger("bridge.antigravity")
 
@@ -296,7 +296,7 @@ class AntigravityRunner(RunnerBase):
         _keepalive_task = self.start_keepalive_task(on_progress, _last_progress_time)
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _keepalive_task.cancel()
             try:
                 proc.kill()

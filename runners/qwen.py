@@ -13,9 +13,9 @@ import os
 import sys
 import tempfile
 import uuid
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from runners.base import RunnerBase, _SUBPROCESS_LOGGER
+from runners.base import _SUBPROCESS_LOGGER, RunnerBase
 
 logger = logging.getLogger("bridge.qwen")
 
@@ -200,7 +200,7 @@ class QwenRunner(RunnerBase):
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 proc.kill()
                 await proc.wait()

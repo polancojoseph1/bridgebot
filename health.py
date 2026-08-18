@@ -1,5 +1,6 @@
 import time
-from config import is_cli_available, CLI_RUNNER, BOT_NAME
+
+from config import BOT_NAME, CLI_RUNNER, is_cli_available
 
 _start_time: float = 0.0
 _message_count: int = 0

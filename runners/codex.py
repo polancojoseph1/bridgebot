@@ -10,10 +10,10 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from datetime import date
-from typing import Callable, Awaitable
 
-from runners.base import RunnerBase, _SUBPROCESS_LOGGER
+from runners.base import _SUBPROCESS_LOGGER, RunnerBase
 
 logger = logging.getLogger("bridge.codex")
 
@@ -56,7 +56,7 @@ class CodexRunner(RunnerBase):
 
         try:
             stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, float(timeout))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return '{"error": "timed out"}'
 
         # Parse JSONL for agent_message items
@@ -319,7 +319,7 @@ class CodexRunner(RunnerBase):
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 proc.kill()
                 await proc.wait()

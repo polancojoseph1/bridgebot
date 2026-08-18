@@ -18,7 +18,8 @@ from pathlib import Path
 
 logger = logging.getLogger("bridge.tasks")
 
-from config import MEMORY_DIR  # noqa: E402
+from config import MEMORY_DIR  # noqa
+
 TASK_FILE = Path(MEMORY_DIR) / "Goals" / "TASKS.md"
 
 _HEADER = (

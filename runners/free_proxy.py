@@ -25,7 +25,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from runners.free import _build_providers, Provider, QwenCLIProvider
+from runners.free import Provider, QwenCLIProvider, _build_providers
 
 logger = logging.getLogger("bridge.free_proxy")
 

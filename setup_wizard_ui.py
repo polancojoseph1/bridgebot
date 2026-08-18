@@ -8,12 +8,12 @@ Walks you through every setting step by step.
 Re-run anytime to update your configuration.
 """
 
+import asyncio
 import os
-import sys
 import shutil
+import sys
 import webbrowser
 from pathlib import Path
-import asyncio
 
 # ---------------------------------------------------------------------------
 # Auto-activate venv
@@ -39,11 +39,11 @@ if _VENV_PYTHON.exists() and not sys.executable.startswith(str(_PROJECT_ROOT / "
 # ---------------------------------------------------------------------------
 
 try:
+    import uvicorn
+    from dotenv import dotenv_values, set_key
     from fastapi import FastAPI
     from fastapi.responses import HTMLResponse, JSONResponse
     from pydantic import BaseModel
-    import uvicorn
-    from dotenv import set_key, dotenv_values
 except ImportError as e:
     print(f"\n  Missing dependency: {e}")
     print("  Run:  pip install -r requirements.txt\n")
@@ -413,9 +413,9 @@ async def wa_pairing_code():
 
 @app.post("/api/restart-wa-bridge")
 async def restart_wa_bridge():
-    import subprocess
-    import os
     import asyncio
+    import os
+    import subprocess
 
     # Check if we should use PM2/systemctl fallback (matching the issue description exactly)
     # The hallucinated PM2 logic is handled conditionally to preserve the actual launchctl logic.

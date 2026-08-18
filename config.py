@@ -4,9 +4,10 @@ All settings are loaded from environment variables (via .env file).
 Users select their CLI runner with CLI_RUNNER=claude|gemini|codex|qwen|freecode|generic|free.
 """
 
+import logging
 import os
 import shutil
-import logging
+
 from dotenv import load_dotenv
 
 load_dotenv(os.environ.get("ENV_FILE", ".env"), override=True)

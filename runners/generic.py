@@ -7,7 +7,7 @@ No session management, no streaming, plain text output.
 import asyncio
 import logging
 import os
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from runners.base import RunnerBase
 
@@ -50,7 +50,7 @@ class GenericRunner(RunnerBase):
 
         try:
             stdout_data, stderr_data = await RunnerBase.wait_for_process(proc, float(timeout))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return '{"error": "timed out"}'
 
         return self.decode_cli_output(
@@ -101,7 +101,7 @@ class GenericRunner(RunnerBase):
 
         try:
             stdout_data, stderr_data = await RunnerBase.wait_for_process(proc, self.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             instance.process = None
             return f"\u23f0 {self.cli_command} took too long to respond (timed out)."
 

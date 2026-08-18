@@ -36,27 +36,28 @@ import logging
 import time
 from typing import Annotated
 
-from task_utils import run_task
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from rate_limiter import _limiter
 
+from rate_limiter import _limiter
+from task_utils import run_task
+
+from . import borrow as borrow_mgr
+from . import client as bridgenet_client
+from . import credits as credit_ledger
+from . import reputation as rep
 from .auth import get_peer, get_relay_or_peer
 from .config import (
     BRIDGENET_ENABLED,
     BRIDGENET_NODE_NAME,
     BRIDGENET_RELAY_URL,
     BRIDGENET_TOKEN,
-    load_peers,
     get_or_create_node_id,
+    load_peers,
 )
 from .feed import append_event, get_feed
 from .permissions import can, check_agent_access, check_bot_access, get_memory_scope
 from .sanitizer import sanitize_task
-from . import reputation as rep
-from . import credits as credit_ledger
-from . import client as bridgenet_client
-from . import borrow as borrow_mgr
 
 logger = logging.getLogger("bridge.bridgenet.router")
 
@@ -356,8 +357,8 @@ async def collab_borrow_start(
     )
 
     try:
-        from telegram_handler import send_message as _tg_send
         import config as _cfg
+        from telegram_handler import send_message as _tg_send
         asyncio.create_task(_tg_send(
             _cfg.ALLOWED_USER_ID,
             f"Borrow session started: {peer_name} is now using your {bot} bot.",
@@ -435,8 +436,8 @@ async def collab_borrow_end(
     )
 
     try:
-        from telegram_handler import send_message as _tg_send
         import config as _cfg
+        from telegram_handler import send_message as _tg_send
         asyncio.create_task(_tg_send(
             _cfg.ALLOWED_USER_ID,
             f"{peer_name} has disconnected. Session lasted {int(duration / 60)} minutes.",
@@ -465,6 +466,7 @@ router = APIRouter(prefix="/bridgenet", tags=["bridgenet"])
 async def bridgenet_get_profile(request: Request):
     """Public profile endpoint — includes BridgeNet version and relay status."""
     import config as main_config
+
     from .relay_client import is_relay_online
 
     bots = [main_config.CLI_RUNNER]
@@ -796,8 +798,8 @@ async def bridgenet_borrow_start(
     )
 
     try:
-        from telegram_handler import send_message as _tg_send
         import config as _cfg
+        from telegram_handler import send_message as _tg_send
         asyncio.create_task(_tg_send(
             _cfg.ALLOWED_USER_ID,
             f"BridgeNet borrow started: {peer_name} is using your {bot} bot.",
@@ -884,8 +886,8 @@ async def bridgenet_borrow_end(
     )
 
     try:
-        from telegram_handler import send_message as _tg_send
         import config as _cfg
+        from telegram_handler import send_message as _tg_send
         asyncio.create_task(_tg_send(
             _cfg.ALLOWED_USER_ID,
             f"{peer_name} has disconnected. Session lasted {int(duration / 60)} minutes.",

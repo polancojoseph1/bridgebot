@@ -1,7 +1,7 @@
 import pytest
 
+from runners import cli_router
 from runners.base import RunnerBase
-import runners.cli_router as cli_router
 
 
 class DummyRunner(RunnerBase):
