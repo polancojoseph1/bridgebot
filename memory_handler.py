@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from config import MEMORY_ENABLED, MEMORY_DIR, MEMORY_COLLECTION, MEMORY_TOP_K
+from config import MEMORY_COLLECTION, MEMORY_DIR, MEMORY_ENABLED, MEMORY_TOP_K
 
 logger = logging.getLogger("bridge.memory")
 

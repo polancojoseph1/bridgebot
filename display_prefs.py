@@ -2,9 +2,10 @@
 Shared display preferences for all bot instances.
 Stored in MEMORY_DIR/user_preferences.db so all bots (Claude, Gemini, Codex) share the same settings.
 """
+import logging
 import os
 import sqlite3
-import logging
+
 import config
 
 logger = logging.getLogger("bridge.display_prefs")

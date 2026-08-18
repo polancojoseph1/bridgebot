@@ -283,6 +283,7 @@ async def submit_task_via_relay(
         Result string from the executing node, or an error message.
     """
     import uuid as _uuid
+
     from . import relay_client
 
     task_id = str(_uuid.uuid4())

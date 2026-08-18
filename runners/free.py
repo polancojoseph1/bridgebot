@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 import time
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from runners.base import _SUBPROCESS_LOGGER
 from runners.freecode import FreeCodeBaseRunner
@@ -303,7 +303,7 @@ class FreeCodeRunner(FreeCodeBaseRunner):
         _keepalive_task = self.start_keepalive_task(on_progress, _last_progress_time)
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _keepalive_task.cancel()
             await self._terminate_process_group(proc)
             instance.process = None

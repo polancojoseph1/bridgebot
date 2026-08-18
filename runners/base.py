@@ -12,14 +12,15 @@ via on_progress(). server.py detects strings starting with '<blockquote' and
 sends them with parse_mode='HTML' instead of Markdown.
 """
 
-from abc import ABC, abstractmethod
 import asyncio
 import os
 import platform
 import re
 import shutil
 import subprocess
-from typing import AsyncGenerator, Callable, Awaitable, Any
+from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Any
 
 # Subprocess logger wrapper script path
 _SUBPROCESS_LOGGER = os.path.join(os.path.dirname(__file__), "subprocess_logger.py")
@@ -45,7 +46,13 @@ class RunnerBase(ABC):
     )
 
     def __init__(self):
-        from config import CLI_TIMEOUT, CLI_SYSTEM_PROMPT, MEMORY_DIR, MEMORY_ENABLED, USER_NAME
+        from config import (
+            CLI_SYSTEM_PROMPT,
+            CLI_TIMEOUT,
+            MEMORY_DIR,
+            MEMORY_ENABLED,
+            USER_NAME,
+        )
         self.timeout = CLI_TIMEOUT
         self.memory_dir = MEMORY_DIR
         self.system_prompt = (CLI_SYSTEM_PROMPT.replace("{MEMORY_DIR}", MEMORY_DIR).replace("{OWNER_NAME}", USER_NAME or "the user") if CLI_SYSTEM_PROMPT else CLI_SYSTEM_PROMPT)
@@ -278,7 +285,7 @@ class RunnerBase(ABC):
 
         try:
             return await asyncio.wait_for(_read(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 proc.kill()
                 await proc.wait()
@@ -308,7 +315,7 @@ class RunnerBase(ABC):
 
         try:
             stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return b"", b"", f"⏰ {name} took too long to respond (timed out)."
         return stdout_data, stderr_data, None
 

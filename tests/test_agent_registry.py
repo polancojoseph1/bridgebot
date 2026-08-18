@@ -1,6 +1,7 @@
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 # Set necessary environment variables before importing module
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "1234567890:AAtesttoken")
@@ -9,13 +10,13 @@ os.environ.setdefault("CLI_RUNNER", "generic")
 
 import agent_registry
 from agent_registry import (
-    create_agent,
-    get_agent,
-    create_skill,
-    get_skill,
-    SkillDefinition,
-    AgentDefinition,
     DEFAULT_AGENT_MODEL,
+    AgentDefinition,
+    SkillDefinition,
+    create_agent,
+    create_skill,
+    get_agent,
+    get_skill,
 )
 
 

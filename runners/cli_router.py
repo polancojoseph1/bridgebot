@@ -12,7 +12,8 @@ import json
 import logging
 import os
 import time
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from runners.base import RunnerBase
 

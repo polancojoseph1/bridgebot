@@ -30,12 +30,20 @@ except ImportError:
         def __call__(self): return self._zi
     LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "UTC"))  # type: ignore
 
-from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
+from agent_registry import (
+    AgentDefinition,
+    get_agent,
+    list_agents,
+    resolve_agent,
+    seed_default_agents,
+    seed_default_skills,
+)
 from agent_skills import build_skills_prompt
-from instance_manager import InstanceManager, Instance
+from instance_manager import Instance, InstanceManager
 
 logger = logging.getLogger("bridge.agent_manager")
-from config import MEMORY_DIR  # noqa: E402
+from config import MEMORY_DIR
+
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
 
 _CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
@@ -84,8 +92,8 @@ def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) ->
     _CLI_RUNNER_NAMES = {"claude", "gemini", "codex", "qwen"}
     if model in _CLI_RUNNER_NAMES:
         try:
-            from server import runner as _server_runner
             from runners.cli_router import CLIRouterRunner
+            from server import runner as _server_runner
             if isinstance(_server_runner, CLIRouterRunner):
                 _server_runner._instance_active[inst.id] = model
                 logger.info("spawn_agent: pre-pinned runner '%s' for agent '%s' (instance #%d)", model, agent_id, inst.id)
@@ -150,7 +158,7 @@ async def assign_task(
     owner_id: int = 0,
 ) -> bool:
     """Queue a task to the agent's instance. Returns True if queued successfully."""
-    from server import QueuedMessage, MessageType, _ensure_worker
+    from server import MessageType, QueuedMessage, _ensure_worker
 
     inst = get_or_spawn(agent_id, instances, owner_id)
     if inst is None:
@@ -197,8 +205,8 @@ async def run_pipeline(
     Returns:
         Final synthesized result as string
     """
-    from runners import create_runner
     import memory_handler
+    from runners import create_runner
     _runner = create_runner()
 
     if not agent_ids:
@@ -510,6 +518,7 @@ async def _diagnose_mistake(agent_name: str, task_response_text: str, feedback: 
     timeout issues. Returns a 1-2 sentence root cause, or empty string on failure.
     """
     import os
+
     import httpx
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -561,7 +570,7 @@ async def record_agent_feedback(agent_id: str, feedback: str, instances: Instanc
 
     Returns a status message.
     """
-    from agent_memory import record_outcome, get_last_agent_response
+    from agent_memory import get_last_agent_response, record_outcome
     from runners import create_runner
     _qrunner = create_runner()
 
@@ -622,6 +631,7 @@ async def auto_critique(agent_id: str, task: str, response: str) -> list[str]:
     Designed to run async in the background — doesn't block the user response.
     """
     import time
+
     from runners import create_runner
     _qrunner = create_runner()
 
@@ -692,8 +702,9 @@ async def _run_post_task_critique(
               Telegram ping with violation list (non-blocking, informational).
               On next task, _query_graph_context() injects violations into context window.
     """
-    from agent_memory import record_outcome
     import time
+
+    from agent_memory import record_outcome
 
     started_at = time.time()
     agent = get_agent(agent_id)

@@ -9,6 +9,7 @@ os.environ.setdefault("CLI_COMMAND", "dummy")
 
 import task_handler
 
+
 def test_ensure_file_creates_file(tmp_path, monkeypatch):
     """Test that _ensure_file creates the task file and its parent directories if they don't exist."""
     # Use tmp_path to mock the task file location

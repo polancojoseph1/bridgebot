@@ -1,11 +1,10 @@
 """Tests for server.py"""
-import os
-import sys
-import asyncio
-import json
 import hashlib
 import hmac
-from unittest.mock import patch, AsyncMock
+import json
+import os
+import sys
+from unittest.mock import AsyncMock, patch
 
 # Add the project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -19,8 +18,8 @@ os.environ.setdefault("ENV_FILE", "/dev/null")
 
 from fastapi.testclient import TestClient
 
-import server
 import health
+import server
 from server import app
 
 # Disable rate limiting during tests so multiple hits to /query don't trigger 429
@@ -139,7 +138,7 @@ def test_direct_query_success():
 
 def test_direct_query_timeout():
     server.INTERNAL_API_KEY = "test-key"
-    server.runner.run_query = AsyncMock(side_effect=asyncio.TimeoutError())
+    server.runner.run_query = AsyncMock(side_effect=TimeoutError())
     response = client.post(
         "/query",
         json={"prompt": "hello", "timeout_secs": 120},

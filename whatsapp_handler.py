@@ -16,6 +16,7 @@ import hashlib
 import logging
 import os
 import re
+
 import httpx
 
 logger = logging.getLogger("bridge.whatsapp")
@@ -104,7 +105,6 @@ async def delete_message(chat_id: int, message_id: int) -> bool:
 
 async def send_chat_action(chat_id: int, action: str) -> None:
     """No-op — could send WA typing presence but not needed for basic operation."""
-    pass
 
 
 async def send_voice(chat_id: int, ogg_path: str, caption: str | None = None) -> bool:

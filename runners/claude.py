@@ -11,9 +11,9 @@ import logging
 import os
 import sys
 import uuid
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from runners.base import RunnerBase, _SUBPROCESS_LOGGER
+from runners.base import _SUBPROCESS_LOGGER, RunnerBase
 
 logger = logging.getLogger("bridge.claude")
 
@@ -70,7 +70,7 @@ class ClaudeRunner(RunnerBase):
 
         try:
             stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, float(timeout))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return '{"error": "timed out"}'
 
         return self.format_query_result(None, stdout_data, stderr_data)
@@ -283,7 +283,7 @@ class ClaudeRunner(RunnerBase):
                 self._clear_subprocess_info(instance)
                 return "\u26a0\ufe0f Plan mode is not supported in this context \u2014 session reset. Please resend your request."
             raise
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 proc.kill()
                 await proc.wait()

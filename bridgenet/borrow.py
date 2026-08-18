@@ -8,7 +8,6 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 from uuid import uuid4
 
 logger = logging.getLogger("bridge.bridgenet.borrow")
@@ -57,7 +56,7 @@ def create_session(peer_name: str, bot: str, instance_id: int) -> BorrowSession:
     return session
 
 
-def get_session(session_id: str) -> Optional[BorrowSession]:
+def get_session(session_id: str) -> BorrowSession | None:
     return _active_borrows.get(session_id)
 
 
@@ -69,7 +68,7 @@ def touch_session(session_id: str) -> bool:
     return False
 
 
-def end_session(session_id: str) -> Optional[BorrowSession]:
+def end_session(session_id: str) -> BorrowSession | None:
     return _active_borrows.pop(session_id, None)
 
 
@@ -77,7 +76,7 @@ def list_sessions() -> list[BorrowSession]:
     return list(_active_borrows.values())
 
 
-def is_borrowing(chat_id: int) -> Optional[BorrowInfo]:
+def is_borrowing(chat_id: int) -> BorrowInfo | None:
     return _my_borrows.get(chat_id)
 
 
@@ -92,7 +91,7 @@ def start_borrow(chat_id: int, peer_name: str, session_id: str, bot: str, label:
     return info
 
 
-def end_borrow(chat_id: int) -> Optional[BorrowInfo]:
+def end_borrow(chat_id: int) -> BorrowInfo | None:
     return _my_borrows.pop(chat_id, None)
 
 

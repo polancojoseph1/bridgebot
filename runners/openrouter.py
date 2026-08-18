@@ -7,10 +7,9 @@ Handles conversation history, streaming, model routing, and fallback.
 import asyncio
 import json
 import logging
-import time
-from typing import Callable, Awaitable
-
 import os
+import time
+from collections.abc import Awaitable, Callable
 
 import httpx
 
@@ -198,7 +197,7 @@ async def run(
 
     # Build fallback list for free models — merge both pools, deduplicate
     if ":free" in model:
-        from v1_api import _FREE_MODELS_GENERAL, _FREE_MODELS_CODING
+        from v1_api import _FREE_MODELS_CODING, _FREE_MODELS_GENERAL
         seen = {model}
         for m in _FREE_MODELS_CODING + _FREE_MODELS_GENERAL:
             if m not in seen:

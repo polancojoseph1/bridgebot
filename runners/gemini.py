@@ -11,9 +11,9 @@ import logging
 import os
 import sys
 import tempfile
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from runners.base import RunnerBase, _SUBPROCESS_LOGGER
+from runners.base import _SUBPROCESS_LOGGER, RunnerBase
 
 logger = logging.getLogger("bridge.gemini")
 
@@ -51,7 +51,7 @@ class GeminiRunner(RunnerBase):
 
         try:
             stdout_data, stderr_data = await RunnerBase.read_with_timeout(proc, float(timeout))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return '{"error": "timed out"}'
 
         # Parse stream-json output for text
@@ -199,7 +199,7 @@ class GeminiRunner(RunnerBase):
 
         try:
             await asyncio.wait_for(process_stream(), timeout=self.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 proc.kill()
                 await proc.wait()

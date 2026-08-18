@@ -1,54 +1,81 @@
 import asyncio
 import json
-import sqlite3
-import uuid
-
 import logging
-import secrets
 import os
 import re
+import secrets
+import sqlite3
 import sys
 import time
-
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
-from fastapi import FastAPI, Request, Header
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles as _StaticFiles
 from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from rate_limiter import _limiter
 
 import health
-from config import (
-    ALLOWED_USER_ID, ALLOWED_USER_IDS, USER_NAMES, HOST, PORT, VOICE_MAX_LENGTH, WEBHOOK_URL,
-    TELEGRAM_BOT_TOKEN, CLI_RUNNER, BOT_NAME, BOT_EMOJI, MEMORY_DIR,
-    is_cli_available, validate_config, logger,
-    COLLAB_ENABLED, INTERNAL_API_KEY,
-)
-from runners import create_runner
-from transport import send_message, delete_message, send_voice, send_photo, send_video, send_chat_action, download_photo, download_document, register_webhook, delete_webhook, get_updates, close_client, register_bot_commands, send_inline_keyboard, answer_callback_query
-import user_access
 import security_filter
+import user_access
+from config import (
+    ALLOWED_USER_ID,
+    ALLOWED_USER_IDS,
+    BOT_EMOJI,
+    BOT_NAME,
+    CLI_RUNNER,
+    COLLAB_ENABLED,
+    HOST,
+    INTERNAL_API_KEY,
+    MEMORY_DIR,
+    PORT,
+    TELEGRAM_BOT_TOKEN,
+    USER_NAMES,
+    VOICE_MAX_LENGTH,
+    WEBHOOK_URL,
+    is_cli_available,
+    logger,
+    validate_config,
+)
 from image_handler import generate_image
+from rate_limiter import _limiter
+from runners import create_runner
+from transport import (
+    answer_callback_query,
+    close_client,
+    delete_message,
+    delete_webhook,
+    download_document,
+    download_photo,
+    get_updates,
+    register_bot_commands,
+    register_webhook,
+    send_chat_action,
+    send_inline_keyboard,
+    send_message,
+    send_photo,
+    send_video,
+    send_voice,
+)
+
 try:
     import playwright_handler
     _playwright_available = True
 except ImportError:
     _playwright_available = False
-from voice_handler import download_voice, transcribe_audio, text_to_speech, cleanup_file
-import memory_handler
-import display_prefs
-import daily_report
-from instance_manager import InstanceManager, Instance
-import router
 import agent_manager
-from agent_registry import resolve_agent, get_agent
+import daily_report
+import display_prefs
+import memory_handler
+import router
+from agent_registry import get_agent, resolve_agent
+from instance_manager import Instance, InstanceManager
+from voice_handler import cleanup_file, download_voice, text_to_speech, transcribe_audio
 
 # Optional modules (graceful degradation if not present)
 try:
@@ -111,7 +138,8 @@ PROMPTS = {}
 instances = InstanceManager()
 
 # -- Session store (crash recovery) ------------------------------------------
-import session_store as _ss_mod  # noqa: E402
+import session_store as _ss_mod
+
 _session_store = _ss_mod.SessionStore()
 _SHUTDOWN_FLAG = os.path.join(os.path.expanduser(os.environ.get("TG_BRIDGE_DATA_DIR", "~/.bridgebot")), "pids", f"{CLI_RUNNER}.shutdown_clean")
 
@@ -384,7 +412,7 @@ async def _enqueue_message(item: QueuedMessage) -> None:
 
     if inst.queue.full():
         enqueue_owner_id = 0 if item.user_id == ALLOWED_USER_ID else item.user_id
-        owner_count = len(instances.list_all(for_owner_id=enqueue_owner_id))
+        owner_count = instances.count_for_owner(enqueue_owner_id)
         label = f" [#{instances.display_num(inst.id, enqueue_owner_id)}: {inst.title}]" if owner_count >= 2 else ""
         await send_message(
             item.chat_id,
@@ -395,7 +423,7 @@ async def _enqueue_message(item: QueuedMessage) -> None:
     if inst.processing:
         position = inst.queue.qsize() + 1
         enqueue_owner_id = 0 if item.user_id == ALLOWED_USER_ID else item.user_id
-        owner_count = len(instances.list_all(for_owner_id=enqueue_owner_id))
+        owner_count = instances.count_for_owner(enqueue_owner_id)
         label = f" [#{instances.display_num(inst.id, enqueue_owner_id)}: {inst.title}]" if owner_count >= 2 else ""
         await send_message(
             item.chat_id,
@@ -602,7 +630,7 @@ async def _restore_sessions_after_crash() -> None:
                 )
                 await inst.queue.put(item)
 
-    pass  # crash recovery runs silently
+    # crash recovery runs silently
 
 
 def _extract_text_from_event(data: dict, text_parts: list) -> None:
@@ -837,8 +865,9 @@ async def lifespan(application: FastAPI):
     if _free_proxy_port:
         async def _run_free_proxy():
             try:
-                from runners.free_proxy import app as _free_proxy_app
                 import uvicorn as _uv
+
+                from runners.free_proxy import app as _free_proxy_app
                 _proxy_cfg = _uv.Config(
                     _free_proxy_app,
                     host="127.0.0.1",
@@ -890,8 +919,10 @@ app.state.limiter = _limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # -- CORS (Bridge Cloud proxy handles auth; BridgeBot is behind Tailscale) ----
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from config import CORS_ALLOW_ORIGINS  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware
+
+from config import CORS_ALLOW_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOW_ORIGINS,
@@ -900,7 +931,8 @@ app.add_middleware(
 )
 
 # -- Security Headers Middleware ----------------------------------------------
-from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -914,7 +946,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 # -- Bridge Cloud v1 API router -----------------------------------------------
-from v1_api import router as v1_router, api_router as v1_api_router  # noqa: E402
+from v1_api import api_router as v1_api_router
+from v1_api import router as v1_router
+
 app.include_router(v1_router)
 app.include_router(v1_api_router)   # /api/chat proxy for static-export frontend
 
@@ -931,12 +965,14 @@ _BRIDGENET_ENABLED = os.environ.get("BRIDGENET_ENABLED", os.environ.get("COLLAB_
 
 if _BRIDGENET_ENABLED:
     try:
-        from bridgenet import bridgenet_router
-        from bridgenet.router import collab_router as _collab_compat_router
-        from bridgenet import borrow as collab_borrow
-        from bridgenet.client import borrow_start as collab_borrow_start, borrow_message as collab_borrow_message, borrow_end as collab_borrow_end
-        from bridgenet.config import load_peers
         import bridgenet.relay_client as _bridgenet_relay_client
+        from bridgenet import borrow as collab_borrow
+        from bridgenet import bridgenet_router
+        from bridgenet.client import borrow_end as collab_borrow_end
+        from bridgenet.client import borrow_message as collab_borrow_message
+        from bridgenet.client import borrow_start as collab_borrow_start
+        from bridgenet.config import load_peers
+        from bridgenet.router import collab_router as _collab_compat_router
         app.include_router(bridgenet_router)       # /bridgenet/* endpoints
         app.include_router(_collab_compat_router)  # /collab/* backward-compat aliases
         logger.info("BridgeNet module loaded — /bridgenet/* and /collab/* mounted")
@@ -944,9 +980,11 @@ if _BRIDGENET_ENABLED:
         # Fall back to legacy collab module if bridgenet fails
         logger.warning("BridgeNet failed to load, trying legacy collab: %s", _bn_err)
         try:
-            from collab import collab_router
             from collab import borrow as collab_borrow
-            from collab.client import borrow_start as collab_borrow_start, borrow_message as collab_borrow_message, borrow_end as collab_borrow_end
+            from collab import collab_router
+            from collab.client import borrow_end as collab_borrow_end
+            from collab.client import borrow_message as collab_borrow_message
+            from collab.client import borrow_start as collab_borrow_start
             from collab.config import load_peers
             app.include_router(collab_router)
             logger.info("Legacy collab module loaded at /collab (BridgeNet unavailable)")
@@ -987,7 +1025,7 @@ async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str
     try:
         response = await runner.run_query(req.prompt, timeout=req.timeout_secs)
         return {"ok": True, "response": response}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return JSONResponse(
             status_code=504,
             content={"ok": False, "error": f"AI response timed out after {req.timeout_secs}s", "response": ""},
@@ -1028,7 +1066,7 @@ async def direct_query(request: Request, req: DirectQueryRequest, x_api_key: str
 
 @app.get("/prompts")
 @_limiter.limit("30/minute")
-async def get_prompts(request: Request, x_api_key: str = Header(default=""), name: Optional[str] = None):
+async def get_prompts(request: Request, x_api_key: str = Header(default=""), name: str | None = None):
     """Return prompts — requires X-API-Key."""
     if not INTERNAL_API_KEY or not x_api_key or not secrets.compare_digest(x_api_key, INTERNAL_API_KEY):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -1314,6 +1352,7 @@ async def _run_polling() -> None:
 @_limiter.limit("120/minute")
 async def webhook(request: Request):
     import secrets
+
     from telegram_handler import _webhook_secret_token
     expected = _webhook_secret_token(TELEGRAM_BOT_TOKEN)
     incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
@@ -1393,7 +1432,8 @@ async def wa_webhook(request: Request):
     """Receive incoming WhatsApp messages from the Baileys Node.js bridge."""
     import os as _os
     import secrets as _secrets
-    from whatsapp_handler import register_jid, jid_to_int
+
+    from whatsapp_handler import jid_to_int, register_jid
 
     expected_secret = _os.environ.get("WA_BRIDGE_SECRET", "")
     if expected_secret:
@@ -1712,7 +1752,7 @@ def _make_progress_handler(chat_id: int, inst, user_id: int, proc_owner_id: int,
             if not _prefs["show_thoughts"]:
                 return  # user doesn't want to see thoughts
             # HTML thinking block — send with HTML parse mode, minimal instance label
-            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if len(instances.list_all(for_owner_id=proc_owner_id)) >= 2 else ""
+            inst_label = f"[#{instances.display_num(inst.id, proc_owner_id)}: {inst.title}] " if instances.count_for_owner(proc_owner_id) >= 2 else ""
             await send_message(chat_id, f"{inst_label}{progress_text}", parse_mode="HTML")
         else:
             if not _prefs["show_tools"]:
@@ -2153,7 +2193,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         # Mark resolved so a future restart doesn't try to resume this task
         _session_store.mark_resolved(chat_id, CLI_RUNNER, inst.id)
 
-        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if len(instances.list_all(for_owner_id=owner_id)) >= 2 else ""
+        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if instances.count_for_owner(owner_id) >= 2 else ""
         parts = []
         if stopped or task_cancelled:
             parts.append("Stopped current task.")
@@ -2240,7 +2280,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         runner.new_session(inst)
         # Mark resolved — starting fresh, no recovery needed on next restart
         _session_store.mark_resolved(chat_id, CLI_RUNNER, inst.id)
-        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if len(instances.list_all(for_owner_id=owner_id)) >= 2 else ""
+        label = f" [#{instances.display_num(inst.id, owner_id)}: {inst.title}]" if instances.count_for_owner(owner_id) >= 2 else ""
         await send_message(chat_id, f"\U0001f195 New conversation started. Queue cleared.{label}")
 
     elif cmd == "/server":
@@ -2251,7 +2291,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
 
     elif cmd == "/help":
         active = instances.get_active_for(owner_id)
-        user_inst_count = len(instances.list_all(for_owner_id=owner_id))
+        user_inst_count = instances.count_for_owner(owner_id)
         inst_info = f"Active: #{instances.display_num(active.id, owner_id)} ({active.title})" if user_inst_count >= 2 else "1 instance running"
         help_text = (
             "**Commands:**\n\n"
@@ -2532,7 +2572,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                         parse_mode="HTML",
                     )
                 else:
-                    owner_inst_count = len(instances.list_all(for_owner_id=owner_id))
+                    owner_inst_count = instances.count_for_owner(owner_id)
                     if inst_to_end and owner_inst_count <= 1:
                         await send_message(chat_id, "Can't end the last instance.")
                     else:
@@ -2799,8 +2839,13 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         arg = parts[2] if len(parts) > 2 else ""
 
         try:
-            from collab.config import load_peers, add_peer, remove_peer, COLLAB_INSTANCE_NAME
             from collab import client as collab_client
+            from collab.config import (
+                COLLAB_INSTANCE_NAME,
+                add_peer,
+                load_peers,
+                remove_peer,
+            )
         except Exception as _e:
             await send_message(chat_id, f"Collab module error: {_e}")
             return
@@ -2863,12 +2908,17 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         arg = parts[2] if len(parts) > 2 else ""
 
         try:
-            from bridgenet.config import load_peers, add_peer, remove_peer, BRIDGENET_NODE_NAME
+            import bridgenet.relay_client as _bn_relay
             from bridgenet import client as bn_client
+            from bridgenet.config import (
+                BRIDGENET_NODE_NAME,
+                add_peer,
+                load_peers,
+                remove_peer,
+            )
+            from bridgenet.credits import get_balance, get_history
             from bridgenet.feed import get_feed as bn_get_feed
             from bridgenet.reputation import get_all_reputations
-            from bridgenet.credits import get_balance, get_history
-            import bridgenet.relay_client as _bn_relay
         except Exception as _e:
             await send_message(chat_id, f"BridgeNet module error: {_e}")
             return

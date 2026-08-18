@@ -1,5 +1,7 @@
 import pytest
+
 from runners.base import RunnerBase
+
 
 class DummyRunner(RunnerBase):
     pass

@@ -6,7 +6,7 @@ import tempfile
 
 import httpx
 
-from config import TELEGRAM_API, TELEGRAM_BOT_TOKEN, WHISPER_MODEL, EDGE_TTS_VOICE
+from config import EDGE_TTS_VOICE, TELEGRAM_API, TELEGRAM_BOT_TOKEN, WHISPER_MODEL
 
 logger = logging.getLogger("bridge.voice")
 
