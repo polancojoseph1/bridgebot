@@ -200,8 +200,8 @@ async def _route_and_enqueue(merged: QueuedMessage, routing_text: str) -> None:
         merged.instance_id = target_instance.id
         await _enqueue_message(merged)
     except Exception as e:
-        logger.error("Failed to route/enqueue merged message: %s", e)
-        await send_message(merged.chat_id, f"Error routing your message: {e}")
+        logger.error("Failed to route/enqueue merged message", exc_info=True)
+        await send_message(merged.chat_id, "Error routing your message. Please try again.")
 
 
 async def _flush_mg_async(mg_id: str) -> None:
@@ -217,7 +217,7 @@ async def _flush_mg_async(mg_id: str) -> None:
         # Try to notify the user of the primary chat
         if items:
             try:
-                await send_message(items[0].chat_id, f"Error processing media group: {e}")
+                await send_message(items[0].chat_id, "Error processing media group. Please try again.")
             except Exception:
                 pass
 
@@ -250,7 +250,7 @@ async def _flush_chat_async(chat_id: int) -> None:
     except Exception as e:
         logger.exception("Error flushing chat")
         try:
-            await send_message(chat_id, f"Error processing message: {e}")
+            await send_message(chat_id, "Error processing message. Please try again.")
         except Exception:
             pass
 
@@ -360,9 +360,9 @@ async def _instance_queue_worker(inst: Instance) -> None:
         except asyncio.CancelledError:
             logger.info("Instance #%d task cancelled", inst.id)
         except Exception as e:
-            logger.error("Instance #%d worker error processing %s: %s", inst.id, item.msg_type.value, e)
+            logger.error("Instance #%d worker error processing %s", inst.id, item.msg_type.value, exc_info=True)
             try:
-                await send_message(item.chat_id, f"Error processing your message: {e}")
+                await send_message(item.chat_id, "Error processing your message. Please try again.")
             except Exception:
                 logger.error("Instance #%d failed to send error message", inst.id)
         finally:
@@ -850,9 +850,9 @@ async def lifespan(application: FastAPI):
                 _proxy_srv.install_signal_handlers = lambda: None  # don't hijack main process signals
                 await _proxy_srv.serve()
             except SystemExit as _e:
-                logger.error("Free proxy failed to start (port %d in use?): %s", _free_proxy_port, _e)
+                logger.error("Free proxy failed to start (port %d in use?)", _free_proxy_port, exc_info=True)
             except Exception as _e:
-                logger.error("Free proxy error: %s", _e)
+                logger.error("Free proxy error", exc_info=True)
         asyncio.create_task(_run_free_proxy())
         logger.info("Free proxy starting on 127.0.0.1:%d", _free_proxy_port)
 
@@ -1263,8 +1263,8 @@ async def process_update(body: dict) -> None:
                     user_id=user_id,
                 ))
             except Exception as e:
-                logger.error("One-shot enqueue failed: %s", e)
-                await send_message(chat_id, f"Error sending to @{target_ref}: {e}")
+                logger.error("One-shot enqueue failed", exc_info=True)
+                await send_message(chat_id, f"Error sending to @{target_ref}. Please try again.")
 
         asyncio.create_task(_oneshot_enqueue())
         return
@@ -1878,8 +1878,8 @@ async def _handle_document_upload(chat_id: int, file_id: str, dest_path: str, fi
         await download_document(file_id, dest_path)
         await send_message(chat_id, f"✅ Saved to: {dest_path}")
     except Exception as e:
-        logger.error("Document download failed: %s", e)
-        await send_message(chat_id, f"❌ Failed to save {file_name}: {e}")
+        logger.error("Document download failed", exc_info=True)
+        await send_message(chat_id, f"❌ Failed to save {file_name}. Please try again.")
 
 
 async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", instance=None, user_id: int = 0, extra_file_ids: list | None = None) -> None:
@@ -1915,7 +1915,7 @@ async def _process_photo_message(chat_id: int, file_id: str, caption: str = "", 
 
     except Exception as e:
         logger.error("Photo download failed: %s", e)
-        await send_message(chat_id, _label(inst, f"\u274c Failed to download photo: {e}", proc_owner_id), format_markdown=True)
+        await send_message(chat_id, _label(inst, "\u274c Failed to download photo. Please try again.", proc_owner_id), format_markdown=True)
         return
 
     thinking_msg_id = await send_message(chat_id, _label(inst, "\U0001f9e0 Thinking...", proc_owner_id, show_emoji=False), format_markdown=True)
@@ -1962,7 +1962,7 @@ async def _process_voice_message(chat_id: int, file_id: str, caption: str = "", 
         transcribed = await transcribe_audio(voice_path)
     except Exception as e:
         logger.error("Voice transcription failed: %s", e)
-        await send_message(chat_id, _label(inst, f"\u274c Failed to transcribe voice: {e}", proc_owner_id), format_markdown=True)
+        await send_message(chat_id, _label(inst, "\u274c Failed to transcribe voice. Please try again.", proc_owner_id), format_markdown=True)
         return
     finally:
         if voice_path:
@@ -2027,7 +2027,7 @@ async def _process_image_generation(chat_id: int, prompt: str) -> None:
             await send_message(chat_id, "\u274c Failed to send the generated image.")
     except Exception as e:
         logger.error("Image generation failed: %s", e)
-        await send_message(chat_id, f"\u274c Image generation failed: {e}")
+        await send_message(chat_id, "\u274c Image generation failed. Please try again.")
     finally:
         if image_path:
             try:
@@ -2047,7 +2047,7 @@ async def _process_screenshot(chat_id: int, url: str) -> None:
             await send_message(chat_id, "\u274c Failed to send screenshot.")
     except Exception as e:
         logger.error("Screenshot failed for %s: %s", url, e)
-        await send_message(chat_id, f"\u274c Screenshot failed: {e}")
+        await send_message(chat_id, "\u274c Screenshot failed. Please try again.")
     finally:
         if png_path:
             try:
@@ -2067,7 +2067,7 @@ async def _process_browse(chat_id: int, url: str) -> None:
             await send_message(chat_id, text, format_markdown=True)
     except Exception as e:
         logger.error("Browse failed for %s: %s", url, e)
-        await send_message(chat_id, f"\u274c Browse failed: {e}")
+        await send_message(chat_id, "\u274c Browse failed. Please try again.")
 
 
 async def _send_with_voice(chat_id: int, response: str) -> None:
@@ -2802,7 +2802,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             from collab.config import load_peers, add_peer, remove_peer, COLLAB_INSTANCE_NAME
             from collab import client as collab_client
         except Exception as _e:
-            await send_message(chat_id, f"Collab module error: {_e}")
+            await send_message(chat_id, "Collab module error. Please try again.")
             return
 
         if sub == "ask":
@@ -2870,7 +2870,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             from bridgenet.credits import get_balance, get_history
             import bridgenet.relay_client as _bn_relay
         except Exception as _e:
-            await send_message(chat_id, f"BridgeNet module error: {_e}")
+            await send_message(chat_id, "BridgeNet module error. Please try again.")
             return
 
         if sub == "ask":
@@ -3090,7 +3090,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
         try:
             result = await collab_borrow_start(peer, bot)
         except Exception as _e:
-            await send_message(chat_id, f"Failed to connect to {peer_name}: {_e}")
+            await send_message(chat_id, f"Failed to connect to {peer_name}. Please try again.")
             return
 
         if not result:
@@ -3131,7 +3131,7 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
             try:
                 await collab_borrow_end(peer, borrow_info.session_id)
             except Exception as _e:
-                logger.error("borrow_end call failed for peer %s: %s", borrow_info.peer_name, _e)
+                logger.error("borrow_end call failed for peer %s", borrow_info.peer_name, exc_info=True)
                 # Still disconnect locally even if remote call fails
 
         collab_borrow.end_borrow(chat_id)
@@ -3258,6 +3258,6 @@ async def _handle_command(chat_id: int, text: str, user_id: int = 0) -> None:
                     user_id=user_id,
                 ))
             except Exception as _e:
-                logger.error("Unknown command passthrough failed: %s", _e)
+                logger.error("Unknown command passthrough failed", exc_info=True)
                 await send_message(chat_id, f"Unknown command: {cmd}\nTry /help")
         asyncio.create_task(_passthrough())
