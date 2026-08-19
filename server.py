@@ -199,7 +199,7 @@ async def _route_and_enqueue(merged: QueuedMessage, routing_text: str) -> None:
         target_instance = await _resolve_target_instance_async(routing_text or "photo", merged.user_id)
         merged.instance_id = target_instance.id
         await _enqueue_message(merged)
-    except Exception as e:
+    except Exception:
         logger.error("Failed to route/enqueue merged message", exc_info=True)
         await send_message(merged.chat_id, "Error routing your message. Please try again.")
 
@@ -212,7 +212,7 @@ async def _flush_mg_async(mg_id: str) -> None:
         return
     try:
         await _flush_mg_inner(items)
-    except Exception as e:
+    except Exception:
         logger.exception("Error flushing media group")
         # Try to notify the user of the primary chat
         if items:
@@ -247,7 +247,7 @@ async def _flush_chat_async(chat_id: int) -> None:
         return
     try:
         await _flush_chat_inner(items)
-    except Exception as e:
+    except Exception:
         logger.exception("Error flushing chat")
         try:
             await send_message(chat_id, "Error processing message. Please try again.")
@@ -359,7 +359,7 @@ async def _instance_queue_worker(inst: Instance) -> None:
             await inst.current_task
         except asyncio.CancelledError:
             logger.info("Instance #%d task cancelled", inst.id)
-        except Exception as e:
+        except Exception:
             logger.error("Instance #%d worker error processing %s", inst.id, item.msg_type.value, exc_info=True)
             try:
                 await send_message(item.chat_id, "Error processing your message. Please try again.")
@@ -1262,7 +1262,7 @@ async def process_update(body: dict) -> None:
                     instance_id=target_inst.id,
                     user_id=user_id,
                 ))
-            except Exception as e:
+            except Exception:
                 logger.error("One-shot enqueue failed", exc_info=True)
                 await send_message(chat_id, f"Error sending to @{target_ref}. Please try again.")
 
@@ -1877,7 +1877,7 @@ async def _handle_document_upload(chat_id: int, file_id: str, dest_path: str, fi
         await send_message(chat_id, f"📥 Downloading {file_name}...")
         await download_document(file_id, dest_path)
         await send_message(chat_id, f"✅ Saved to: {dest_path}")
-    except Exception as e:
+    except Exception:
         logger.error("Document download failed", exc_info=True)
         await send_message(chat_id, f"❌ Failed to save {file_name}. Please try again.")
 
