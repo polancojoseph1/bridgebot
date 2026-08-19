@@ -175,8 +175,8 @@ async def collab_list_peers(request: Request):
     _collab_require_owner(request)
 
     peers = load_peers()
-    result = []
-    for name, peer in peers.items():
+
+    async def fetch_one(name: str, peer: dict):
         profile = None
         try:
             profile = await asyncio.wait_for(
@@ -186,14 +186,17 @@ async def collab_list_peers(request: Request):
             profile = None
 
         online = profile is not None
-        result.append({
+        return {
             "name": name,
             "url": peer.get("url", ""),
             "tier": peer.get("tier", "acquaintance"),
             "online": online,
             "bots": profile.get("bots", peer.get("bots", [])) if profile else peer.get("bots", []),
             "agents": profile.get("agents", []) if profile else [],
-        })
+        }
+
+    coroutines = [fetch_one(name, peer) for name, peer in peers.items()]
+    result = await asyncio.gather(*coroutines)
 
     return {"peers": result, "count": len(result)}
 
@@ -498,8 +501,8 @@ async def bridgenet_list_peers(request: Request):
     _require_owner_token(request)
 
     peers = load_peers()
-    result = []
-    for name, peer in peers.items():
+
+    async def fetch_one(name: str, peer: dict):
         profile = None
         try:
             profile = await asyncio.wait_for(
@@ -509,7 +512,7 @@ async def bridgenet_list_peers(request: Request):
             profile = None
 
         online = profile is not None
-        result.append({
+        return {
             "name": name,
             "url": peer.get("url", ""),
             "tier": peer.get("tier", "acquaintance"),
@@ -517,7 +520,10 @@ async def bridgenet_list_peers(request: Request):
             "reputation": rep.get_reputation(name),
             "bots": profile.get("bots", peer.get("bots", [])) if profile else peer.get("bots", []),
             "agents": profile.get("agents", []) if profile else [],
-        })
+        }
+
+    coroutines = [fetch_one(name, peer) for name, peer in peers.items()]
+    result = await asyncio.gather(*coroutines)
 
     return {"peers": result, "count": len(result)}
 
