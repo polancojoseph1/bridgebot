@@ -3,6 +3,8 @@ Bridge Cloud v1 API
 Adds /v1/chat (NDJSON streaming) and /v1/health endpoints.
 These are separate from the Telegram webhook chain.
 """
+import socket
+import ipaddress
 import asyncio
 import json
 import os
