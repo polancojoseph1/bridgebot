@@ -117,6 +117,10 @@ class InstanceManager:
     def active_id(self) -> int:
         return self._active_id
 
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances owned by the given owner_id."""
+        return len(self._owner_to_ids.get(owner_id, set()))
+
     @property
     def count(self) -> int:
         return len(self._instances)
