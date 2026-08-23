@@ -14,6 +14,9 @@ import shutil
 import webbrowser
 from pathlib import Path
 import asyncio
+import re
+
+_RE_PAIRING_CODE = re.compile(r'\b([A-Z0-9]{4}-[A-Z0-9]{4})\b')
 
 # ---------------------------------------------------------------------------
 # Auto-activate venv
@@ -402,8 +405,7 @@ async def wa_pairing_code():
             # The bridgebot endpoint returns plain text; parse it out
             text = r.text.strip()
             # Match the code in XXXX-XXXX format
-            import re
-            match = re.search(r'\b([A-Z0-9]{4}-[A-Z0-9]{4})\b', text)
+            match = _RE_PAIRING_CODE.search(text)
             if match:
                 return JSONResponse({"code": match.group(1)})
     except Exception:
