@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## 2024-06-03 - Prevent CSRF by using POST for state-modifying endpoints
+**Vulnerability:** The `/api/generate-bc-key` endpoint in `setup_wizard_ui.py` was using the HTTP GET method, which is susceptible to Cross-Site Request Forgery (CSRF). An attacker could trick a user into generating and setting a new API key without their knowledge.
+**Learning:** Endpoints that modify server state (like generating/setting API keys) must never use the GET method. GET requests are easily exploitable via `<img>`, `<iframe>`, or simple links.
+**Prevention:** Always use POST (or other appropriate state-modifying methods like PUT/DELETE) for endpoints that change data or state. Ensure the frontend `fetch` calls are updated to include `{method: 'POST'}`.
