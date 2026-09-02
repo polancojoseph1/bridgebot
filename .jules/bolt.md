@@ -1,3 +1,7 @@
+## 2024-03-24 - [Optimize instance count by owner id]
+**Learning:** Checking the number of instances for a given owner (`len(instances.list_all(for_owner_id=owner_id))`) is an O(M) operation because `list_all` iterates over a set of instances and filters them, returning a list. This was being called multiple times in `server.py` to conditionally format strings (e.g., checking if user has >= 2 instances).
+**Action:** Introduced an O(1) `count_for_owner` method in `InstanceManager` that simply returns the length of the pre-existing `_owner_to_ids` set for a given owner_id. This avoids generating an unused list just to count the elements.
+
 ## 2024-03-24 - [Optimize instance_manager.list_all O(n) to O(m)]
 **Learning:** `InstanceManager.list_all()` was frequently called (21+ times in `server.py`) and did an O(N) iteration over all instances across all users just to retrieve instances for a single owner. As the total instance count across all users grows, this becomes a bottleneck, especially inside tight loops and message processing checks.
 **Action:** Introduced an `_owner_to_ids` dictionary index to maintain an O(1) mapping of `owner_id` to a set of their `instance_id`s, reducing the single-owner query from O(N) over all instances to O(M) where M is the small subset of instances for that specific user.
