@@ -4,6 +4,8 @@ Adds /v1/chat (NDJSON streaming) and /v1/health endpoints.
 These are separate from the Telegram webhook chain.
 """
 import asyncio
+import socket
+import ipaddress
 import json
 import os
 import random
@@ -28,8 +30,6 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         self, host: str, port: int, timeout: float = None, local_address=None, **kwargs
     ) -> httpcore.AsyncNetworkStream:
         import asyncio
-        import socket
-        import ipaddress
 
         loop = asyncio.get_running_loop()
         try:
