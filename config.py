@@ -85,8 +85,10 @@ def _parse_cors_origins() -> list[str]:
     raw = os.environ.get("CORS_ALLOW_ORIGINS", "")
     if not raw:
         return []
-    return [o.strip() for o in raw.split(",") if o.strip()]
-
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    if "*" in origins or "null" in origins:
+        raise ValueError("CORS origins must not be \"*\" or \"null\". Specify explicit domains.")
+    return origins
 CORS_ALLOW_ORIGINS: list[str] = _parse_cors_origins()
 if WEBHOOK_URL and not WEBHOOK_URL.startswith("https://"):
     _collab_token_set = bool(os.environ.get("COLLAB_TOKEN", ""))
