@@ -29,3 +29,7 @@
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
 >>>>>>> main
+
+## YYYY-MM-DD - O(N log N) list sorting overhead in counting instances
+**Learning:** Computing length of sorted lists for counts is an O(N log N) overhead, replacing it with an O(1) dictionary lookup avoids materializing lists and sorts.
+**Action:** Use an O(1) dictionary lookup when just trying to find the count of items.
