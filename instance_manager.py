@@ -317,6 +317,14 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+    def count_for_owner(self, owner_id: int) -> int:
+        """O(1) lookup to count instances for an owner without creating and sorting a list.
+
+        Performance Optimization:
+        Avoids O(N log N) sorting overhead and list memory allocation when we just need the count.
+        """
+        return sum(1 for i in self._owner_to_ids.get(owner_id, set()) if i in self._instances)
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
