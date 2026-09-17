@@ -29,3 +29,6 @@
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
 >>>>>>> main
+## 2024-05-13 - [O(K) Instance Count Optimization]
+**Learning:** Generating full lists using `list_all()` just to check `len()` causes unnecessary memory allocation overhead and O(N log N) sorting overhead.
+**Action:** Use an O(K) generator-based `count_for_owner()` lookup directly checking the `_owner_to_ids` mapping to optimize existence and bound checking instead of creating new lists.
