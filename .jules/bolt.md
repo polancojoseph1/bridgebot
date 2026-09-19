@@ -29,3 +29,7 @@
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
 >>>>>>> main
+
+## YYYY-MM-DD - [O(1) dictionary lookup for instance counts]
+**Learning:** The server often counts the number of instances for an owner by fully instantiating and sorting the instance list via `len(instances.list_all(for_owner_id=X))`, an O(N log N) operation for the entire instances dict + creating list + filtering. Instead we can do it directly with the `_owner_to_ids` mapping.
+**Action:** Avoid calling `list_all()` just to get a count, use an O(K) lookup directly with `sum(1 for i in self._owner_to_ids.get(owner_id, set()) if i in self._instances)`.
