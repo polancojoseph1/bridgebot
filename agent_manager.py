@@ -57,6 +57,8 @@ def _build_agent_system_prompt(agent: AgentDefinition) -> str:
     return "\n\n".join(parts)
 
 
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
 def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) -> Instance | None:
     """Create a new Instance for the agent. Links it in the tracking map.
     Does NOT switch the active instance — caller decides when to switch."""
