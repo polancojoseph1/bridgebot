@@ -344,6 +344,11 @@ class InstanceManager:
 
         return sorted(instances, key=lambda i: i.id)
 
+
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances for the given owner in O(K) time, where K is the number of instances for the owner."""
+        return sum(1 for i in self._owner_to_ids.get(owner_id, set()) if i in self._instances)
+
     def iter_all(self) -> list[Instance]:
         """Return an unsorted list snapshot of all instances."""
         return list(self._instances.values())
