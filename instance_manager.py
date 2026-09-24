@@ -317,6 +317,11 @@ class InstanceManager:
             return owner_instances[num - 1]
         return None
 
+
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances owned by owner_id in O(K) time, avoiding O(K log K) sort and list materialization."""
+        return sum(1 for i in self._owner_to_ids.get(owner_id, set()) if i in self._instances)
+
     def list_all(self, for_owner_id: int | None = None, exclude_user_ids: set[int] | None = None) -> list[Instance]:
         """Return instances filtered by owner.
 
