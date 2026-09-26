@@ -295,3 +295,13 @@ def test_remove_does_not_cancel_completed_tasks(manager):
 
     worker_task.cancel.assert_not_called()
     current_task.cancel.assert_not_called()
+
+def test_count_for_owner(manager: InstanceManager) -> None:
+    """Test counting instances by owner without listing them."""
+    manager.create('A', 111)
+    manager.create('A', 111)
+    manager.create('B', 222)
+
+    assert manager.count_for_owner(111) == 2
+    assert manager.count_for_owner(222) == 1
+    assert manager.count_for_owner(333) == 0
