@@ -45,6 +45,8 @@ _RE_PIPELINE_SPLIT = re.compile(r"\s*(?:→|->)\s*|\s+")
 # Maps agent_id -> instance_id for currently-running agent instances
 _agent_instance_map: dict[str, int] = {}
 
+_MODEL_VALIDATION_RE = re.compile(r'^[a-zA-Z0-9_\-\.]+$')
+
 
 def _build_agent_system_prompt(agent: AgentDefinition) -> str:
     """Combine agent's system prompt with its skill pack sections."""
