@@ -1,3 +1,7 @@
+## 2024-06-25 - [Optimize counting instances for an owner]
+**Learning:** `InstanceManager.list_all()` was being called frequently in `server.py` just to calculate `len(instances.list_all(for_owner_id=owner_id))`. While `list_all` was previously optimized to O(K) where K is the number of instances for the owner, creating a new sorted list object just to get its length introduces unnecessary memory allocation and CPU overhead, particularly inside loops and message handlers.
+**Action:** Added an O(K) `count_for_owner` method to `InstanceManager` that uses a generator expression (`sum(1 for i in self._owner_to_ids.get(owner_id, set()) if i in self._instances)`) to count instances without instantiating and sorting a new list. Updated `server.py` to use this method instead of `len(list_all())`.
+
 ## 2024-03-24 - [Optimize instance_manager.list_all O(n) to O(m)]
 **Learning:** `InstanceManager.list_all()` was frequently called (21+ times in `server.py`) and did an O(N) iteration over all instances across all users just to retrieve instances for a single owner. As the total instance count across all users grows, this becomes a bottleneck, especially inside tight loops and message processing checks.
 **Action:** Introduced an `_owner_to_ids` dictionary index to maintain an O(1) mapping of `owner_id` to a set of their `instance_id`s, reducing the single-owner query from O(N) over all instances to O(M) where M is the small subset of instances for that specific user.
