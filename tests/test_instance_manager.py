@@ -295,3 +295,23 @@ def test_remove_does_not_cancel_completed_tasks(manager):
 
     worker_task.cancel.assert_not_called()
     current_task.cancel.assert_not_called()
+
+
+def test_count_for_owner():
+    manager = InstanceManager()
+    # Default instance created, owned by 0
+    assert manager.count_for_owner(0) == 1
+    assert manager.count_for_owner(123) == 0
+
+    # Create two more for user 123
+    manager.create("Instance 1", owner_id=123)
+    manager.create("Instance 2", owner_id=123)
+
+    assert manager.count_for_owner(0) == 1
+    assert manager.count_for_owner(123) == 2
+
+    # Remove one from 123
+    instances = manager.list_all(for_owner_id=123)
+    manager.remove(instances[0].id, owner_id=123)
+
+    assert manager.count_for_owner(123) == 1
