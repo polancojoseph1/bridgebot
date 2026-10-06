@@ -14,10 +14,15 @@ Public API:
 """
 
 import logging
+from instance_manager import InstanceManager, Instance
+from agent_skills import build_skills_prompt
+from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
 import os
 import re
 from datetime import datetime
 from pathlib import Path
+
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_/-]+$")
 
 try:
     import pytz
@@ -30,9 +35,6 @@ except ImportError:
         def __call__(self): return self._zi
     LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "UTC"))  # type: ignore
 
-from agent_registry import AgentDefinition, resolve_agent, list_agents, seed_default_agents, seed_default_skills, get_agent
-from agent_skills import build_skills_prompt
-from instance_manager import InstanceManager, Instance
 
 logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402
