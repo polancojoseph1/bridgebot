@@ -29,3 +29,7 @@
 **Learning:** Calling `re.match(pattern, ...)`, `re.search(pattern, ...)`, or `re.split(pattern, ...)` inside a frequently-executed function with a raw string pattern forces Python to repeatedly retrieve the compiled regex from its internal cache (and compile it if evicted), introducing unnecessary overhead.
 **Action:** Pre-compile regular expressions using `re.compile()` at the module level to avoid repeated compilation and cache-lookup overhead during runtime execution.
 >>>>>>> main
+
+## YYYY-MM-DD - [O(K) instance counting]
+**Learning:** Checking instance counts dynamically per-progress update using `len(list_all())` was creating O(N log N) bottlenecks due to list allocations and sorting during streaming.
+**Action:** Used the `_owner_to_ids` mapping dictionary to directly calculate counts in O(K) without allocating lists, reducing CPU load on chat endpoints.
