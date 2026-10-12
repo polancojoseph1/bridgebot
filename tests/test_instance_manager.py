@@ -295,3 +295,12 @@ def test_remove_does_not_cancel_completed_tasks(manager):
 
     worker_task.cancel.assert_not_called()
     current_task.cancel.assert_not_called()
+
+
+def test_count_for_owner(manager: InstanceManager):
+    """Test counting instances by owner without instantiating the full list."""
+    manager.create("User Inst 1", owner_id=123)
+    manager.create("User Inst 2", owner_id=123)
+    assert manager.count_for_owner(123) == 2
+    assert manager.count_for_owner(0) == 1  # The default global instance
+    assert manager.count_for_owner(999) == 0
