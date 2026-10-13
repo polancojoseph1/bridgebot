@@ -5,6 +5,9 @@ These are separate from the Telegram webhook chain.
 """
 import asyncio
 import json
+import socket
+import ipaddress
+
 import os
 import random
 import logging
@@ -28,7 +31,6 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
         self, host: str, port: int, timeout: float = None, local_address=None, **kwargs
     ) -> httpcore.AsyncNetworkStream:
         import asyncio
-        import socket
         import ipaddress
 
         loop = asyncio.get_running_loop()
@@ -99,7 +101,6 @@ async def _is_safe_url(url_str: str) -> bool:
             addr_info = await loop.run_in_executor(
                 None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
             )
->>>>>>> main
         except socket.gaierror:
             return False
 
@@ -112,13 +113,8 @@ async def _is_safe_url(url_str: str) -> bool:
             except ValueError:
                 return False
 
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
->>>>>>> main
->>>>>>> main
                 return False
 
->>>>>>> main
         return True
     except Exception:
         return False
@@ -793,8 +789,8 @@ async def api_chat_proxy(request: Request):
                         yield chunk
         except Exception as exc:
             logger.error("Internal proxy error in _stream: %s", exc, exc_info=True)
-            import json as _json
-            yield (_json.dumps({"type": "error", "message": "Internal Server Error"}) + "\n").encode()
+            import json
+            yield (json.dumps({"type": "error", "message": "Internal Server Error"}) + "\n").encode()
 
     return StreamingResponse(
         _stream(),
@@ -865,15 +861,15 @@ async def api_proxy(request: Request):
                     headers={"X-API-Key": target_key, "Content-Type": "application/json"},
                 ) as resp:
                     if not (200 <= resp.status_code < 300):
-                        import json as _json
-                        yield (_json.dumps({"type": "error", "message": f"Upstream error: {resp.status_code}"}) + "\n").encode()
+                        import json
+                        yield (json.dumps({"type": "error", "message": f"Upstream error: {resp.status_code}"}) + "\n").encode()
                         return
                     async for chunk in resp.aiter_bytes():
                         yield chunk
         except Exception as exc:
             logger.error("Internal error in _proxy_stream: %s", exc, exc_info=True)
-            import json as _json
-            yield (_json.dumps({"type": "error", "message": "Internal Server Error"}) + "\n").encode()
+            import json
+            yield (json.dumps({"type": "error", "message": "Internal Server Error"}) + "\n").encode()
 
     return StreamingResponse(
         _proxy_stream(),
