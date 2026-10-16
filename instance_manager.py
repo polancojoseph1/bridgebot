@@ -309,6 +309,10 @@ class InstanceManager:
             if inst.id == instance_id:
                 return i
         return instance_id  # fallback
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances owned by the given owner_id."""
+        return len(self._owner_to_ids.get(owner_id, set()))
+
 
     def get_by_display_num(self, num: int, owner_id: int) -> Instance | None:
         """Return the instance at 1-based display position num within the owner's list."""
