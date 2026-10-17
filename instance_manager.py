@@ -302,6 +302,11 @@ class InstanceManager:
     # Listing
     # ------------------------------------------------------------------
 
+    def count_for_owner(self, owner_id: int) -> int:
+        """Return the number of instances owned by the given owner without sorting overhead."""
+        owner_ids = self._owner_to_ids.get(owner_id, set())
+        return sum(1 for i in owner_ids if i in self._instances)
+
     def display_num(self, instance_id: int, owner_id: int) -> int:
         """Return the 1-based display number of an instance within the owner's list."""
         owner_instances = self.list_all(for_owner_id=owner_id)
