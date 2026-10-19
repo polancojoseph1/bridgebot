@@ -14,7 +14,11 @@ Public API:
 """
 
 import logging
+import re
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_./-]+$")
+import re
 import os
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_./-]+$")
 import re
 from datetime import datetime
 from pathlib import Path
@@ -509,7 +513,9 @@ async def _diagnose_mistake(agent_name: str, task_response_text: str, feedback: 
     Uses httpx + GEMINI_API_KEY (already configured in .env) to avoid subprocess
     timeout issues. Returns a 1-2 sentence root cause, or empty string on failure.
     """
-    import os
+    import re
+import os
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9_./-]+$")
     import httpx
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
