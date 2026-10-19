@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## YYYY-MM-DD - Server-Side Request Forgery (SSRF) via Headless Browser
+**Vulnerability:** The `/screenshot` and `/browse` commands use a headless Playwright browser to navigate to user-provided URLs. By supplying internal IP addresses or cloud metadata URLs (e.g., `http://169.254.169.254` or `http://localhost`), an attacker could force the server to fetch and return sensitive internal network resources or AWS credentials.
+**Learning:** Headless browsers are fully-fledged network clients and are just as susceptible to SSRF attacks as HTTP libraries like `httpx` or `requests`. They will dutifully resolve and navigate to internal IP ranges if not explicitly blocked.
+**Prevention:** Always validate user-provided URLs against an allowlist or a strict internal IP blocklist (e.g., `is_safe_url`) *before* passing the URL to `page.goto()` in Playwright or Puppeteer.

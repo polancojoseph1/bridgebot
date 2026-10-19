@@ -24,9 +24,14 @@ PAGE_TIMEOUT = 30000
 async def screenshot(url: str, full_page: bool = False) -> str:
     """Navigate to url and take a screenshot. Returns path to PNG temp file."""
     from playwright.async_api import async_playwright
+    import v1_api
 
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    # SSRF protection
+    if not await v1_api._is_safe_url(url):
+        raise ValueError("Invalid or unsafe URL")
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png", prefix="pw_shot_")
     tmp.close()
@@ -51,9 +56,14 @@ async def screenshot(url: str, full_page: bool = False) -> str:
 async def get_page_text(url: str) -> str:
     """Navigate to url and extract readable text content. Returns plain text."""
     from playwright.async_api import async_playwright
+    import v1_api
 
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    # SSRF protection
+    if not await v1_api._is_safe_url(url):
+        raise ValueError("Invalid or unsafe URL")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
