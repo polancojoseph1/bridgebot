@@ -304,6 +304,13 @@ def get_config():
 
 @app.post("/api/save")
 def save_config(req: SaveRequest):
+    # 🛡️ Sentinel Security Fix: Restrict which keys can be written to the .env file
+    ALLOWED_KEYS = {
+        "TELEGRAM_BOT_TOKEN", "TELEGRAM_USER_ID", "BRIDGE_CLOUD_API_KEY",
+        "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"
+    }
+    if req.key not in ALLOWED_KEYS and not any(p["env"] == req.key for p in FREE_PROVIDERS):
+        return {"ok": False, "error": "Invalid configuration key"}
     set_key(str(ENV_PATH), req.key, req.value)
     return {"ok": True}
 
@@ -316,7 +323,17 @@ def detect_qwen():
 
 @app.post("/api/clear")
 def clear_config(req: SaveRequest):
+    # 🛡️ Sentinel Security Fix: This endpoint allows arbitrary keys in the .env file to be deleted
+    # We restrict this to a known set of allowed API keys and configuration keys
     from dotenv import unset_key
+
+    ALLOWED_KEYS = {
+        "TELEGRAM_BOT_TOKEN", "TELEGRAM_USER_ID", "BRIDGE_CLOUD_API_KEY",
+        "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"
+    }
+    if req.key not in ALLOWED_KEYS and not any(p["env"] == req.key for p in FREE_PROVIDERS):
+        return {"ok": False, "error": "Invalid configuration key"}
+
     unset_key(str(ENV_PATH), req.key)
     config_cache = read_env()  # noqa: F841
     return {"ok": True}
@@ -388,6 +405,10 @@ class WaSaveRequest(BaseModel):
 
 @app.post("/api/save-wa")
 def save_wa_config(req: WaSaveRequest):
+    # 🛡️ Sentinel Security Fix: Restrict which keys can be written to the WA .env file
+    ALLOWED_KEYS = {"WA_PHONE_NUMBER", "WA_OWNER_JID"}
+    if req.key not in ALLOWED_KEYS:
+        return {"ok": False, "error": "Invalid configuration key"}
     WA_ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     set_key(str(WA_ENV_PATH), req.key, req.value)
     return {"ok": True}
