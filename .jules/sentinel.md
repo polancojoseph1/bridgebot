@@ -57,3 +57,7 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+## 2026-05-29 - Prevent CSRF on sensitive actions
+**Vulnerability:** The `/api/generate-bc-key` endpoint allowed generating a new `BRIDGE_CLOUD_API_KEY` via a `GET` request. This made it vulnerable to Cross-Site Request Forgery (CSRF) where a malicious site could trigger an API key rotation.
+**Learning:** State-modifying operations (like creating/deleting API keys, changing settings) should never use `GET` endpoints, as they can be triggered automatically by browsers fetching resources (like `<img>` tags on other sites) without explicit user intent or pre-flight CORS checks.
+**Prevention:** Always use `POST` (or `PUT`/`DELETE`) for any state-modifying actions, and update the corresponding frontend `fetch` calls to explicitly specify `{method: 'POST'}`.
