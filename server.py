@@ -1396,11 +1396,13 @@ async def wa_webhook(request: Request):
     from whatsapp_handler import register_jid, jid_to_int
 
     expected_secret = _os.environ.get("WA_BRIDGE_SECRET", "")
-    if expected_secret:
-        incoming = request.headers.get("X-WA-Bridge-Secret", "")
-        if not _secrets.compare_digest(incoming, expected_secret):
-            logger.warning("[wa] Webhook rejected — invalid bridge secret")
-            return JSONResponse(status_code=401, content={"ok": False})
+    if not expected_secret:
+        logger.warning("[wa] Webhook rejected — WA_BRIDGE_SECRET not configured")
+        return JSONResponse(status_code=401, content={"ok": False})
+    incoming = request.headers.get("X-WA-Bridge-Secret", "")
+    if not _secrets.compare_digest(incoming, expected_secret):
+        logger.warning("[wa] Webhook rejected — invalid bridge secret")
+        return JSONResponse(status_code=401, content={"ok": False})
 
     body = await request.json()
     jid: str = body.get("jid", "")
