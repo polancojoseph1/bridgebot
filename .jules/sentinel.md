@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## YYYY-MM-DD - CSRF in generate-bc-key Endpoint
+**Vulnerability:** The `/api/generate-bc-key` endpoint in `setup_wizard_ui.py` was configured to accept `GET` requests, allowing Cross-Site Request Forgery (CSRF). State-modifying actions should not use `GET`.
+**Learning:** State-modifying endpoints configured to use `GET` bypass basic CSRF protections. In addition, when altering the JS embedded in Python f-strings to include options like `method: 'POST'`, the curly braces must be double-escaped `{{ ... }}` to prevent the f-string from evaluating them as variables.
+**Prevention:** Ensure state-modifying actions always use `POST` (or `PUT`/`DELETE`). Double-escape JS braces inside Python f-strings.
