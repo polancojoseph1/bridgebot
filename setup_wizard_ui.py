@@ -39,7 +39,9 @@ if _VENV_PYTHON.exists() and not sys.executable.startswith(str(_PROJECT_ROOT / "
 # ---------------------------------------------------------------------------
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
     from fastapi.responses import HTMLResponse, JSONResponse
     from pydantic import BaseModel
     import uvicorn
@@ -249,6 +251,8 @@ CLI_OPTIONS = {
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Bridgebot Setup", docs_url=None, redoc_url=None)
+_limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = _limiter
 
 
 class SaveRequest(BaseModel):
@@ -273,7 +277,8 @@ def is_set(value: str | None) -> bool:
 
 
 @app.get("/api/config")
-def get_config():
+@_limiter.limit("30/minute")
+def get_config(request: Request):
     env = read_env()
     result = {}
     for p in FREE_PROVIDERS:
@@ -303,19 +308,22 @@ def get_config():
 
 
 @app.post("/api/save")
-def save_config(req: SaveRequest):
+@_limiter.limit("30/minute")
+def save_config(request: Request, req: SaveRequest):
     set_key(str(ENV_PATH), req.key, req.value)
     return {"ok": True}
 
 
 @app.get("/api/detect-qwen")
-def detect_qwen():
+@_limiter.limit("30/minute")
+def detect_qwen(request: Request):
     found = shutil.which("qwen") is not None
     return {"installed": found}
 
 
 @app.post("/api/clear")
-def clear_config(req: SaveRequest):
+@_limiter.limit("30/minute")
+def clear_config(request: Request, req: SaveRequest):
     from dotenv import unset_key
     unset_key(str(ENV_PATH), req.key)
     config_cache = read_env()  # noqa: F841
@@ -323,7 +331,8 @@ def clear_config(req: SaveRequest):
 
 
 @app.get("/api/generate-bc-key")
-def generate_bc_key():
+@_limiter.limit("30/minute")
+def generate_bc_key(request: Request):
     """Generate a random BRIDGE_CLOUD_API_KEY and save it to .env."""
     import secrets as _sec
     key = "bc_live_" + _sec.token_urlsafe(32)
@@ -332,7 +341,8 @@ def generate_bc_key():
 
 
 @app.get("/api/bc-info")
-def bc_info():
+@_limiter.limit("30/minute")
+def bc_info(request: Request):
     """Return Bridge Cloud connection info (server URL detection)."""
     import socket
     env = read_env()
@@ -356,7 +366,8 @@ def bc_info():
 
 
 @app.get("/api/wa-status")
-async def wa_status():
+@_limiter.limit("30/minute")
+async def wa_status(request: Request):
     import httpx
     try:
         async with httpx.AsyncClient(timeout=3.0) as c:
@@ -368,7 +379,8 @@ async def wa_status():
 
 
 @app.get("/api/wa-qr.png")
-async def wa_qr_proxy():
+@_limiter.limit("30/minute")
+async def wa_qr_proxy(request: Request):
     import httpx
     from fastapi.responses import Response
     try:
@@ -387,14 +399,16 @@ class WaSaveRequest(BaseModel):
 
 
 @app.post("/api/save-wa")
-def save_wa_config(req: WaSaveRequest):
+@_limiter.limit("30/minute")
+def save_wa_config(request: Request, req: WaSaveRequest):
     WA_ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     set_key(str(WA_ENV_PATH), req.key, req.value)
     return {"ok": True}
 
 
 @app.get("/api/wa-pairing-code")
-async def wa_pairing_code():
+@_limiter.limit("30/minute")
+async def wa_pairing_code(request: Request):
     import httpx
     try:
         async with httpx.AsyncClient(timeout=3.0) as c:
@@ -412,7 +426,8 @@ async def wa_pairing_code():
 
 
 @app.post("/api/restart-wa-bridge")
-async def restart_wa_bridge():
+@_limiter.limit("30/minute")
+async def restart_wa_bridge(request: Request):
     import subprocess
     import os
     import asyncio
@@ -461,7 +476,8 @@ async def restart_wa_bridge():
 
 
 @app.get("/api/config-wa")
-def get_wa_config():
+@_limiter.limit("30/minute")
+def get_wa_config(request: Request):
     wa_env = dict(dotenv_values(str(WA_ENV_PATH))) if WA_ENV_PATH.exists() else {}
     phone = wa_env.get("WA_PHONE_NUMBER", "")
     owner_jid = wa_env.get("WA_OWNER_JID", "")
@@ -473,7 +489,8 @@ def get_wa_config():
 
 
 @app.get("/", response_class=HTMLResponse)
-def serve_ui():
+@_limiter.limit("30/minute")
+def serve_ui(request: Request):
     providers_json = __import__("json").dumps(FREE_PROVIDERS)
     cli_options_json = __import__("json").dumps(CLI_OPTIONS)
     return HTMLResponse(content=build_html(providers_json, cli_options_json))
