@@ -10,12 +10,44 @@ import asyncio
 import logging
 import tempfile
 import os
+import ipaddress
+import socket
+from urllib.parse import urlparse as _urlparse
 
 logger = logging.getLogger("bridge.playwright")
 
 # Default viewport
 VIEWPORT = {"width": 1280, "height": 900}
 # Max chars returned from get_page_text
+
+def _is_safe_url_sync(url_str: str) -> bool:
+    try:
+        parsed = _urlparse(url_str)
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        try:
+            addr_info = socket.getaddrinfo(hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        except socket.gaierror:
+            return False
+
+        for family, type, proto, canonname, sockaddr in addr_info:
+            ip = sockaddr[0]
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                    return False
+            except ValueError:
+                return False
+
+        return True
+    except Exception:
+        return False
+
 MAX_TEXT_CHARS = 8000
 # Page load timeout ms
 PAGE_TIMEOUT = 30000
@@ -27,6 +59,9 @@ async def screenshot(url: str, full_page: bool = False) -> str:
 
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    if not _is_safe_url_sync(url):
+        raise ValueError(f"Invalid or unsafe URL: {url}")
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png", prefix="pw_shot_")
     tmp.close()
@@ -54,6 +89,9 @@ async def get_page_text(url: str) -> str:
 
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    if not _is_safe_url_sync(url):
+        raise ValueError(f"Invalid or unsafe URL: {url}")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)

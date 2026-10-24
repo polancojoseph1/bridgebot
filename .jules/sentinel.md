@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## 2024-11-06 - SSRF in Playwright Handler
+**Vulnerability:** The `playwright_handler.py` module passed user-provided URLs directly to `page.goto()` without checking if the URL was safe or prone to SSRF. This could allow an attacker to make the headless browser access internal network resources.
+**Learning:** Headless browsers act as fully-fledged network clients and are vulnerable to SSRF. User-provided URLs must be validated against internal IP blocklists or allowlists before being passed to navigation commands.
+**Prevention:** I have implemented a synchronous version of `_is_safe_url` to check URLs before doing `page.goto()` in `screenshot` and `get_page_text`. I did not intercept the browser requests because it causes massive latency issues.
