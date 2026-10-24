@@ -25,8 +25,13 @@ async def screenshot(url: str, full_page: bool = False) -> str:
     """Navigate to url and take a screenshot. Returns path to PNG temp file."""
     from playwright.async_api import async_playwright
 
+    from v1_api import _is_safe_url
+
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    if not await _is_safe_url(url):
+        raise ValueError(f"Invalid or unsafe URL: {url}")
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png", prefix="pw_shot_")
     tmp.close()
@@ -52,8 +57,13 @@ async def get_page_text(url: str) -> str:
     """Navigate to url and extract readable text content. Returns plain text."""
     from playwright.async_api import async_playwright
 
+    from v1_api import _is_safe_url
+
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
+    if not await _is_safe_url(url):
+        raise ValueError(f"Invalid or unsafe URL: {url}")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
