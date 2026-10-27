@@ -93,6 +93,8 @@ async def _is_safe_url(url_str: str) -> bool:
             return False
 
         import asyncio
+        import socket
+        import ipaddress
         loop = asyncio.get_running_loop()
         try:
             # Run getaddrinfo in a thread pool to avoid blocking the event loop
