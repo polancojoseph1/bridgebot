@@ -52,9 +52,16 @@ def _resolve_and_check_ip_sync(hostname: str) -> bool:
 
         # Simple cache cleanup
         if len(_dns_cache) > 1000:
+            # Delete expired first
             keys_to_delete = [k for k, v in _dns_cache.items() if now - v[1] >= _CACHE_TTL]
             for k in keys_to_delete:
                 del _dns_cache[k]
+
+            # If still over 1000, start popping oldest elements.
+            # Dictionaries in Python 3.7+ maintain insertion order, so we can just delete from the beginning
+            while len(_dns_cache) > 1000:
+                first_key = next(iter(_dns_cache))
+                del _dns_cache[first_key]
 
     return True
 async def _route_interceptor(route):
