@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## 2026-05-28 - SSRF Prevention in Playwright
+**Vulnerability:** Headless browsers (like Playwright) act as fully-fledged network clients and are vulnerable to Server-Side Request Forgery (SSRF) when navigating to user-provided URLs.
+**Learning:** Applying pre-flight URL validation in Python before calling navigation methods (like `page.goto()`) is insufficient because the browser automatically follows HTTP redirects. An attacker can bypass the initial check by providing an external URL that responds with a `302 Redirect` to an internal IP.
+**Prevention:** When implementing SSRF protection using `page.route('**/*', ...)` in Playwright, intercepting every subresource request and executing DNS resolution via a thread pool (e.g., `loop.run_in_executor`) introduces a Denial of Service (Thread Pool Starvation) vulnerability. Mitigate this by wrapping the DNS resolution logic in a bounded cache with a short TTL (e.g., 5 seconds) to prevent starvation without allowing indefinite rebinding.
