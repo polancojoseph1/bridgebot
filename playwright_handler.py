@@ -10,6 +10,9 @@ import asyncio
 import logging
 import tempfile
 import os
+import socket
+import ipaddress
+from urllib.parse import urlparse
 
 logger = logging.getLogger("bridge.playwright")
 
@@ -20,6 +23,71 @@ MAX_TEXT_CHARS = 8000
 # Page load timeout ms
 PAGE_TIMEOUT = 30000
 
+
+
+
+import time
+import threading
+_dns_cache = {}
+_CACHE_TTL = 5.0  # seconds
+_dns_cache_lock = threading.Lock()
+
+def _resolve_and_check_ip_sync(hostname: str) -> bool:
+    now = time.time()
+    with _dns_cache_lock:
+        if hostname in _dns_cache:
+            cached_result, timestamp = _dns_cache[hostname]
+            if now - timestamp < _CACHE_TTL:
+                return cached_result
+
+    try:
+        addr_info = socket.getaddrinfo(hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror:
+        with _dns_cache_lock:
+            _dns_cache[hostname] = (False, now)
+        return False
+
+    for family, type, proto, canonname, sockaddr in addr_info:
+        ip = sockaddr[0]
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                with _dns_cache_lock:
+                    _dns_cache[hostname] = (False, now)
+                return False
+        except ValueError:
+            with _dns_cache_lock:
+                _dns_cache[hostname] = (False, now)
+            return False
+
+    with _dns_cache_lock:
+        _dns_cache[hostname] = (True, now)
+
+        # Simple cache cleanup
+        if len(_dns_cache) > 1000:
+            keys_to_delete = [k for k, v in _dns_cache.items() if now - v[1] >= _CACHE_TTL]
+            for k in keys_to_delete:
+                del _dns_cache[k]
+
+    return True
+
+
+async def _route_interceptor(route):
+    url = route.request.url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https", "data"):
+        await route.abort()
+        return
+
+    hostname = parsed.hostname
+    if hostname:
+        loop = asyncio.get_running_loop()
+        is_safe = await loop.run_in_executor(None, _resolve_and_check_ip_sync, hostname)
+        if not is_safe:
+            await route.abort()
+            return
+
+    await route.continue_()
 
 async def screenshot(url: str, full_page: bool = False) -> str:
     """Navigate to url and take a screenshot. Returns path to PNG temp file."""
@@ -37,6 +105,7 @@ async def screenshot(url: str, full_page: bool = False) -> str:
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(viewport=VIEWPORT)
+            await page.route("**/*", _route_interceptor)
             await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
             # Brief pause for JS-rendered content
             await asyncio.sleep(1.5)
@@ -59,6 +128,7 @@ async def get_page_text(url: str) -> str:
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(viewport=VIEWPORT)
+            await page.route("**/*", _route_interceptor)
             await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
             await asyncio.sleep(1.0)
             title = await page.title()
