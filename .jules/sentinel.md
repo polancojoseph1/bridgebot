@@ -57,3 +57,7 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+## YYYY-MM-DD - Fix CSRF vulnerability in generate-bc-key endpoint
+**Vulnerability:** The /api/generate-bc-key endpoint was configured to accept GET requests, making it vulnerable to Cross-Site Request Forgery (CSRF). An attacker could trick an authenticated user into visiting a malicious site that generates a new API key without their consent.
+**Learning:** State-modifying endpoints must never use GET requests, as they can be easily triggered via image tags or scripts on other origins.
+**Prevention:** Always use POST, PUT, or DELETE for state-modifying actions and ensure proper CSRF protections (like tokens or SameSite cookies) are in place.
