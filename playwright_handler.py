@@ -80,7 +80,7 @@ async def _safe_route_handler(route):
             return await route.abort("accessdenied")
 
         await route.continue_()
-    except Exception as e:
+    except Exception:
         await route.abort("failed")
 
 logger = logging.getLogger("bridge.playwright")
