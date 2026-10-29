@@ -57,3 +57,8 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+
+## YYYY-MM-DD - Protect Headless Browsers against SSRF
+**Vulnerability:** Headless browsers driven by Playwright (`playwright_handler.py`) could be exploited for Server-Side Request Forgery (SSRF) because they follow redirects to private/internal IPs, bypassing standard pre-flight validation.
+**Learning:** Pre-flight checks on URLs before launching the browser are insufficient because the target server can respond with a 302 Redirect to an internal address, which the browser seamlessly follows. Subresource requests embedded in the target page (like `img` or `script` pointing to localhost) would also be loaded natively by the browser.
+**Prevention:** Apply an asynchronous route interceptor (`page.route("**/*", _safe_route_handler)`) to strictly validate every request dynamically using `socket.getaddrinfo` in a thread pool (with a bounded cache to prevent DNS lag/starvation). Abort any navigation or subresource request that resolves to an internal/private IP.

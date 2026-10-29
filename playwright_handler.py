@@ -11,6 +11,78 @@ import logging
 import tempfile
 import os
 
+
+import socket
+import ipaddress
+import urllib.parse
+import time
+import threading
+
+_dns_cache = {}
+_dns_cache_lock = threading.Lock()
+DNS_CACHE_TTL = 5.0
+
+async def _safe_route_handler(route):
+    url = route.request.url
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            if parsed.scheme == "data":
+                return await route.continue_()
+            return await route.abort("accessdenied")
+
+        if parsed.scheme not in ("http", "https"):
+            return await route.abort("accessdenied")
+
+        now = time.time()
+
+        with _dns_cache_lock:
+            cached = _dns_cache.get(hostname)
+            if cached and now - cached['time'] < DNS_CACHE_TTL:
+                is_safe = cached['safe']
+            else:
+                is_safe = None
+
+        if is_safe is None:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            try:
+                addr_info = await loop.run_in_executor(
+                    None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
+                )
+            except socket.gaierror:
+                return await route.abort("name_not_resolved")
+
+            safe = True
+            for family, type, proto, canonname, sockaddr in addr_info:
+                ip = sockaddr[0]
+                try:
+                    ip_obj = ipaddress.ip_address(ip)
+                    if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
+                        safe = False
+                        break
+                except ValueError:
+                    safe = False
+                    break
+
+            with _dns_cache_lock:
+                if len(_dns_cache) > 1000:
+                    expired = [k for k, v in _dns_cache.items() if now - v['time'] >= DNS_CACHE_TTL]
+                    for k in expired:
+                        del _dns_cache[k]
+                    if len(_dns_cache) > 1000:
+                        _dns_cache.clear()
+                _dns_cache[hostname] = {'time': now, 'safe': safe}
+                is_safe = safe
+
+        if not is_safe:
+            return await route.abort("accessdenied")
+
+        await route.continue_()
+    except Exception as e:
+        await route.abort("failed")
+
 logger = logging.getLogger("bridge.playwright")
 
 # Default viewport
@@ -37,6 +109,7 @@ async def screenshot(url: str, full_page: bool = False) -> str:
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(viewport=VIEWPORT)
+            await page.route("**/*", _safe_route_handler)
             await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
             # Brief pause for JS-rendered content
             await asyncio.sleep(1.5)
@@ -59,6 +132,7 @@ async def get_page_text(url: str) -> str:
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(viewport=VIEWPORT)
+            await page.route("**/*", _safe_route_handler)
             await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
             await asyncio.sleep(1.0)
             title = await page.title()
