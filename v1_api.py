@@ -80,6 +80,8 @@ class SafeAsyncHTTPTransport(httpx.AsyncHTTPTransport):
         )
 
 async def _is_safe_url(url_str: str) -> bool:
+    import socket
+    import ipaddress
     """Validate that the URL scheme is strictly http/https.
     ⚡ Bolt Optimization: Removed slow DNS pre-flight checks here since SafeNetworkBackend enforces them natively at the connection layer."""
     try:
