@@ -57,3 +57,7 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+## YYYY-MM-DD - [Fix CSRF on API Key Generation]
+**Vulnerability:** The endpoint for generating a new Bridge Cloud API key (`/api/generate-bc-key`) was using a GET request, making it vulnerable to Cross-Site Request Forgery (CSRF) and unintended state changes through prefetching or link sharing.
+**Learning:** State-modifying endpoints must never use GET requests. If a GET request modifies state, attackers can trigger unauthorized actions merely by tricking an authenticated user into loading a URL.
+**Prevention:** Ensure all state-modifying endpoints require POST requests. When updating the frontend JS embedded in Python f-strings, double-escape curly braces (e.g., `{{ method: 'POST' }}`) to prevent f-string evaluation errors.
