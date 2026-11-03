@@ -23,6 +23,7 @@ try:
     import pytz
     LOCAL_TZ = pytz.timezone(os.environ.get("TIMEZONE", "UTC"))
 except ImportError:
+
     from zoneinfo import ZoneInfo
     class _PytzCompat:
         def __init__(self, key): self._zi = ZoneInfo(key)
@@ -37,6 +38,7 @@ from instance_manager import InstanceManager, Instance
 logger = logging.getLogger("bridge.agent_manager")
 from config import MEMORY_DIR  # noqa: E402
 SCHEDULE_FILE = str(Path(MEMORY_DIR) / "SCHEDULE.md")
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9.-]+$")
 
 _CREDENTIAL_RE = re.compile(r'[A-Za-z0-9_\-]{32,}')
 _RE_PIPELINE_TASK = re.compile(r'"([^"]+)"\s*$')
