@@ -199,7 +199,6 @@ class InstanceManager:
         # Check ownership
         if self._instance_owner.get(instance_id, 0) != owner_id:
             return None
-        owner_instances = self.list_all(for_owner_id=owner_id)
         if self.count_for_owner(owner_id) <= 1:
             return None  # Can't remove the last instance for this owner
         removed = self._instances.pop(instance_id)
