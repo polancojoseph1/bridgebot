@@ -57,3 +57,7 @@
 **Vulnerability:** The pre-flight `_is_safe_url` URL validation in `v1_api.py` was using `socket.gethostbyname`, which only returns a single IPv4 address. This allows an attacker to bypass the check by providing a hostname that resolves to multiple IPs or an IPv6 address that resolves to local/private.
 **Learning:** `socket.gethostbyname` is inadequate for security-critical IP validation because it fails to evaluate all DNS records associated with a hostname, specifically ignoring IPv6 and alternative IPv4 records.
 **Prevention:** Always use `socket.getaddrinfo` for IP validation and iterate through *all* returned IP addresses. Reject the request if *any* of the resolved IPs are private, loopback, link-local, multicast, unspecified, or reserved.
+## 2024-11-06 - Sentinel: Fix CSRF vulnerability in /api/generate-bc-key
+**Vulnerability:** The `/api/generate-bc-key` endpoint, which modifies application state by generating and saving a new BRIDGE_CLOUD_API_KEY, was configured to accept GET requests, making it vulnerable to Cross-Site Request Forgery (CSRF).
+**Learning:** State-modifying endpoints must strictly require POST/PUT/DELETE methods to prevent unauthorized state changes via simple link clicks or embedded images.
+**Prevention:** Ensure all FastAPI endpoints that modify state (e.g., generating keys, deleting configs) use `@app.post` instead of `@app.get`.
