@@ -85,41 +85,7 @@ async def _is_safe_url(url_str: str) -> bool:
     try:
         from urllib.parse import urlparse as _urlparse
         parsed = _urlparse(url_str)
-        if parsed.scheme not in ("http", "https"):
-            return False
-
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-
-        import asyncio
-        loop = asyncio.get_running_loop()
-        try:
-            # Run getaddrinfo in a thread pool to avoid blocking the event loop
-            addr_info = await loop.run_in_executor(
-                None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
-            )
->>>>>>> main
-        except socket.gaierror:
-            return False
-
-        for family, type, proto, canonname, sockaddr in addr_info:
-            ip = sockaddr[0]
-            try:
-                ip_obj = ipaddress.ip_address(ip)
-                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-                    return False
-            except ValueError:
-                return False
-
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
->>>>>>> main
->>>>>>> main
-                return False
-
->>>>>>> main
-        return True
+        return parsed.scheme in ("http", "https")
     except Exception:
         return False
 
