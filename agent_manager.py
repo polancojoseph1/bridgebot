@@ -1,3 +1,4 @@
+import re
 """Agent Manager — runtime lifecycle for named specialist agents.
 
 Bridges agent_registry.py (definitions) with instance_manager.py (runtime sessions).
@@ -75,7 +76,7 @@ def spawn_agent(agent_id: str, instances: InstanceManager, owner_id: int = 0) ->
     inst.agent_system_prompt = _build_agent_system_prompt(agent)
     # Validate model string: only allow safe characters, max 128 chars
     model = agent.model or ""
-    if model and not _MODEL_VALIDATION_RE.match(model) or len(model) > 128:
+    if model and not re.match(r'^[a-zA-Z0-9_.-]+$', model) or len(model) > 128:
         logger.warning("spawn_agent: invalid model '%s' for agent '%s', using default", model, agent_id)
         model = ""
     inst.model = model
