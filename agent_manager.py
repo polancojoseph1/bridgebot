@@ -1,4 +1,3 @@
-import re
 """Agent Manager — runtime lifecycle for named specialist agents.
 
 Bridges agent_registry.py (definitions) with instance_manager.py (runtime sessions).
