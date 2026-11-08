@@ -175,16 +175,20 @@ async def collab_list_peers(request: Request):
     _collab_require_owner(request)
 
     peers = load_peers()
-    result = []
-    for name, peer in peers.items():
-        profile = None
+
+    async def fetch_peer_profile(name, peer):
         try:
             profile = await asyncio.wait_for(
                 bridgenet_client.fetch_profile(peer), timeout=3.0
             )
+            return name, peer, profile
         except Exception:
-            profile = None
+            return name, peer, None
 
+    results = await asyncio.gather(*(fetch_peer_profile(name, peer) for name, peer in peers.items()))
+
+    result = []
+    for name, peer, profile in results:
         online = profile is not None
         result.append({
             "name": name,
@@ -498,16 +502,20 @@ async def bridgenet_list_peers(request: Request):
     _require_owner_token(request)
 
     peers = load_peers()
-    result = []
-    for name, peer in peers.items():
-        profile = None
+
+    async def fetch_peer_profile(name, peer):
         try:
             profile = await asyncio.wait_for(
                 bridgenet_client.fetch_profile(peer), timeout=3.0
             )
+            return name, peer, profile
         except Exception:
-            profile = None
+            return name, peer, None
 
+    results = await asyncio.gather(*(fetch_peer_profile(name, peer) for name, peer in peers.items()))
+
+    result = []
+    for name, peer, profile in results:
         online = profile is not None
         result.append({
             "name": name,
