@@ -14,6 +14,9 @@ Public API:
 """
 
 import logging
+import re
+
+_MODEL_VALIDATION_RE = re.compile(r"^[a-zA-Z0-9.\-_]+$")
 import os
 import re
 from datetime import datetime
