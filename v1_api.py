@@ -4,6 +4,8 @@ Adds /v1/chat (NDJSON streaming) and /v1/health endpoints.
 These are separate from the Telegram webhook chain.
 """
 import asyncio
+import socket
+import ipaddress
 import json
 import os
 import random
@@ -99,7 +101,6 @@ async def _is_safe_url(url_str: str) -> bool:
             addr_info = await loop.run_in_executor(
                 None, socket.getaddrinfo, hostname, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
             )
-
         except socket.gaierror:
             return False
 
@@ -112,8 +113,8 @@ async def _is_safe_url(url_str: str) -> bool:
             except ValueError:
                 return False
 
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or ip_obj.is_reserved:
                 return False
-
 
         return True
     except Exception:

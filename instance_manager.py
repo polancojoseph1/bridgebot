@@ -301,8 +301,6 @@ class InstanceManager:
     # ------------------------------------------------------------------
     # Listing
     # ------------------------------------------------------------------
-
-
     def count_for_owner(self, owner_id: int) -> int:
         """Return the number of instances owned by owner_id in O(K) time."""
         owner_ids = self._owner_to_ids.get(owner_id, set())
