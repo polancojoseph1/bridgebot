@@ -121,6 +121,11 @@ class InstanceManager:
     def count(self) -> int:
         return len(self._instances)
 
+    def count_for_owner(self, owner_id: int) -> int:
+        if owner_id in self._owner_to_ids:
+            return sum(1 for i in self._owner_to_ids[owner_id] if i in self._instances)
+        return 0
+
     def get_active_for(self, owner_id: int) -> Instance:
         """Return the active instance for the given owner.
 
@@ -199,8 +204,7 @@ class InstanceManager:
         # Check ownership
         if self._instance_owner.get(instance_id, 0) != owner_id:
             return None
-        owner_instances = self.list_all(for_owner_id=owner_id)
-        if len(owner_instances) <= 1:
+        if self.count_for_owner(owner_id) <= 1:
             return None  # Can't remove the last instance for this owner
         removed = self._instances.pop(instance_id)
         self._remove_owner(instance_id)
